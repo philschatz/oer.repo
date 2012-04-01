@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>oerpub.repo Admin Console</title>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+    <meta content='width=device-width, height=device-height, initial-scale=1.0, user-scalable=no' name='viewport'>
+    <script src='http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js' type='text/javascript'></script>
+
+    <style type="text/css">
+      table { width: 100%; }
+      td, th { border: 1px solid; padding: 0em 0.5em; }
+      table caption { text-align: left; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+
+      <h2>Derive a new resource from a URL</h2>
+      <form action="/derive">
+        <span>URL: </span>
+        <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
+        <input type="button" name="submit" value="Derive!"/>
+      </form>
+      <hr/>
+      <h2>Submit a new version of an existing resource</h2>
+      <form action="/c/" method="POST">
+        <div>
+          <span>Resource id of published resource (just a number):</span>
+          <input name="_id" value="0"/>
+        </div>
+        <p>Resource body (the HTML):</p>
+        <textarea name="body" rows="10" cols="100">
+&lt;html&gt;
+  &lt;body&gt;
+    &lt;p&gt;Hello there!&lt;/p&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+        </textarea>
+        <div>
+          <input type="button" name="submit" value="Commit!"/>
+        </div>
+      </form>
+      <hr/>
+      <div id="monitor"/>
+
+
+    <script type="text/javascript">
+//<!--
+
+//$.ready(function() {
+
+var monitor = $('#monitor');
+
+//Make the forms AJAXy
+$('form').each(function(id, form) {
+  var $form = $(form);
+  var action = $form.attr('action');
+  var method = $form.attr('method');
+  var inputs = $form.find('input,textarea');
+  var submit = $form.find('input[name=submit]');
+  
+  if(!method) { method = 'GET'; }
+  
+  submit.on('click', function() {
+    var params = {};
+    inputs.each(function(i, input) {
+      $input = $(input);
+      if($input.attr('name')) {
+        params[$input.attr('name')] = $input.val();
+      }
+    });
+    var action2 = action;
+    if($form.find('input[name=_id]').length > 0) {
+      action2 += $form.find('input[name=_id]').val();
+    }
+    
+    $.ajax(action2, {
+      type: method,
+      data: params,
+      success: function(text, status) {
+        //alert("Succeeded with message: " + text);
+      }
+    });
+  });
+
+});
+
+tick = function() {
+  $.getJSON('/events', function(data, textStatus) {
+    monitor.children().detach();
+    var table = $('<table><caption>Events</caption><tr><th>id</th><th>Status</th><th>Success URL</th><th>Message</th><th>Created</th><th>Modified</th><th>additional</th></tr></table>').appendTo(monitor);
+
+    // Print in reverse
+    data = data.reverse();
+    for(var id in data) {
+      var event = data[id];
+      
+      // Since it's reversed, reverse the id's
+      id = data.length - id - 1;
+      
+      var row = $('<tr/>').appendTo(table);
+      $('<td><a href="/events/'+id+'">'+id+'</a></td>').appendTo(row);
+      $('<td>'+event.status+'</td>').appendTo(row);
+      if(event.url) {
+        $('<td><a href="' + event.url + '">' + event.url + '</a></td>').appendTo(row);
+      } else {
+        $('<td> - </td>').appendTo(row);
+      }
+      $('<td>'+event.message+'</td>').appendTo(row);
+      $('<td>'+event.created+'</td>').appendTo(row);
+      $('<td>'+event.modified+'</td>').appendTo(row);
+      
+      var remove = ['status', 'url', 'message', 'created', 'modified'];
+      for(var i in remove) {
+        var key = remove[i];
+        if(key in event) {
+          delete event[key];
+        }
+      }
+
+      var json = '{';
+      for(var key in event) {
+        json += key;
+        json += ':"';
+        json += event[key];
+        json += '", ';
+      }
+      json += '}';      
+
+      $('<td>' + json + '</td>').appendTo(row);
+        
+      id++;
+    }
+  });
+  setTimeout(tick, 1000);
+};
+
+tick();
+
+//});
+
+//-->
+    </script>
+  </body>
+</html>
