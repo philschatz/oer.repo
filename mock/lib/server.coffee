@@ -7,9 +7,12 @@ module.exports = exports = (argv) ->
   express = require('express')
   path = require('path')
   http = require('http')
+  https = require('https')
   url = require('url')
   hbs = require('hbs')
   spawn = require('child_process').spawn
+  jsdom = require('jsdom')
+  EventEmitter = require('events').EventEmitter
   # Create the main application object, app.
   app = express.createServer()
   # defaultargs.coffee exports a function that takes the argv object that is passed in and then does its
@@ -35,56 +38,100 @@ module.exports = exports = (argv) ->
       'body': body
     }
     ver
-  newEvent = (message, originUrl, status = 'PROCESSING') ->
-    console.log("New Event: #{message}")
-    id = events.length
-    events.push
-      message: message
-      status: status
-      created: new Date()
-      origin: originUrl
-    id
 
-  updateEvent = (id, message, status = 'PROCESSING', url = null) ->
-    console.log("Updating Event #{id}: #{message}")
-    events[id].message = message
-    events[id].status = status
-    events[id].modified = new Date()
-    if url
-      events[id].url = url
+  class Event extends EventEmitter
+    constructor: (@title, @origin) ->
+      @status = 'PENDING'
+      @created = @modified = new Date()
+      # Push it into the array so admin can keep track of it
+      events.push @
+      @id = events.length - 1
 
+    update: (message, status) ->
+      if @status == 'FINISHED' or @status == 'FAILED'
+        err = { event: @, message: 'This event already completed', newMessage: message, newStatus: status }
+        console.log err
+        throw err
+      @message = message
+      @modified = new Date()
+      @status = status if status?
+      console.log "Event: #{@message}"
+    
+    work: (message, status = 'WORKING') ->
+      @update(message, status)
+      @emit('work')
+
+    fail: (error) ->
+      error = JSON.stringify(error) if not typeof error = 'string'
+      @update(error, 'FAILED')
+      @emit('end', 'FAILED')
+    
+    finish: (message, url) ->
+      @update(message, 'FINISHED')
+      @url = url
+      @emit('end', 'FINISHED')
+      
   newFile = (body) ->
     id = files.length
     # Wrapped in array because it's version 0
     files.push body
     id
+
   remoteGet = (remoteUrl, event, cb) ->
     getopts = url.parse(remoteUrl)
-    updateEvent(event, 'Requesting remote resource')
+    event.work 'Requesting remote resource'
+    event.url = remoteUrl
     
+    protocol = if 'https:' == getopts.protocol then https else http
     # TODO: This needs more robust error handling, just trying to
     # keep it from taking down the server.
-    http.get(getopts, (resp) ->
+    protocol.get(getopts, (resp) ->
       responsedata = ''
       resp.on('data', (chunk) ->
         responsedata += chunk
-        updateEvent(event, 'Getting Data')
+        event.work 'Getting Data'
       )
       resp.on('error', (e) ->
-        updateEvent(event, "Error: #{JSON.stringify(e)}", 'FAILED')
+        event.fail e
         cb(e)
       )
       resp.on('end', ->
         if responsedata
-          updateEvent(event, 'Got the resource')
+          event.work 'Got the resource'
           cb(null, responsedata, resp.statusCode)
         else
-          updateEvent(event, "Error: Not Found", 'FAILED')
+          event.fail "Resource Not Found"
           cb(null, 'Page not found', 404)
       )
     ).on('error', (e) ->
-      updateEvent(event, "Error: #{JSON.stringify(e)}", 'FAILED')
+      event.fail e
       cb(e)
+    )
+
+  cleanupHTML = (html, event, callback) ->
+    event.work 'Cleaning up HTML. Parsing...'
+    doc = jsdom.jsdom(html, null, 
+      features:
+        FetchExternalResources: false # ['img']
+        ProcessExternalResources: false
+    )
+    window = doc.createWindow()
+    jsdom.jQueryify(window, (window, $) ->
+      try
+        $ = window.jQuery
+        $('script').remove()
+        $('head').remove() # TODO: look up attribution here
+        $('*[style]').removeAttr('style')
+        
+        event.work 'Cleaning up links'
+        links = []
+        $('a[href]').each (i, a) ->
+          links.push $(a).attr('href')
+        
+        event.work 'Done cleaning'
+        callback(doc.outerHTML, links)
+      catch error
+        event.fail error
     )
 
   #### Express configuration ####
@@ -135,23 +182,29 @@ module.exports = exports = (argv) ->
   # of the openID related routes which are at the end together.
 
   generatePdf = (resourceUrl) ->
-    pdfEvent = newEvent('Generating PDF', resourceUrl)
+    pdfEvent = new Event('Generating PDF', resourceUrl)
     remoteGet "#{argv.u}/pdf/derive?url=#{resourceUrl}", pdfEvent, (err, text, statusCode) ->
-      updateEvent(pdfEvent, "PDF Request Sent!", 'SUCCESS', text)
+      pdfEvent.finish "PDF Request Sent!", text
   
   app.get('/derive', (req, res) ->
     originUrl = req.query.url
-    event = newEvent('Getting remote resource', originUrl)
+    event = new Event('Deriving a copy', originUrl)
+    event.work 'Getting remote resource'
     remoteGet originUrl, event, (err, text, statusCode) -> 
       if text
         # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
-        id = newContent(text)
-        derivedUrl = "#{argv.u}/c/#{id}@0"
-        updateEvent(event, 'Derived!', 'SUCCESS', derivedUrl)
-        generatePdf(derivedUrl)
+        event.work('Cleaning up the HTML')
+        cleanupHTML(text, event, (cleanHtml, links) ->
+          id = newContent(cleanHtml)
+          derivedUrl = "#{argv.u}/c/#{id}@0"
+          event.finish 'Derived!', derivedUrl
+          event.links = links # For debugging
+          # Deriving a copy doesn't depend on generating a PDF
+          generatePdf(derivedUrl)
+        )
       else
-        updateEvent(event, "Error: #{JSON.stringify(err)}", 'FAILED')
-    res.send "#{argv.u}/events/#{event}"
+        event.fail err
+    res.send "#{argv.u}/events/#{event.id}"
   )
 
   # For debugging
@@ -159,7 +212,7 @@ module.exports = exports = (argv) ->
     res.send content
   )
 
-  app.get('/c/:id([0-9]+)(@:ver([0-9]+))?.:format?', (req, res) ->
+  app.get('/c/:id([0-9]+)(@:ver([0-9]+))?', (req, res) ->
     ver = req.param('ver', "@#{content[req.params.id].length - 1}")
     ver = ver[1..ver.length] # split off the '@' character
     res.send content[req.params.id][ver].body
@@ -175,11 +228,16 @@ module.exports = exports = (argv) ->
   ##### Post routes #####
 
   app.post('/c/:id([0-9]+)', (req, res) ->
-    body = req.body.body
-    ver = updateContent(req.params.id, body)
-    
-    generatePdf("#{argv.u}/c/#{req.params.id}@#{ver}")
-    res.send "#{argv.u}/c/#{req.params.id}@#{ver}"
+    html = req.body.body
+    event = new Event('Committing new version')
+    cleanupHTML(html, event, (cleanedHTML, links) ->
+      event.links = links
+      ver = updateContent(req.params.id, cleanedHTML)
+      newUrl = "#{argv.u}/c/#{req.params.id}@#{ver}"
+      generatePdf(newUrl)
+      event.finish 'Content updated!', newUrl
+    )
+    res.send "#{argv.u}/events/#{event.id}"
   )
 
   # Traditional request to / redirects to index :)
@@ -197,38 +255,42 @@ module.exports = exports = (argv) ->
   
   app.get('/pdf/derive', (req, res) ->
     originUrl = req.query.url
-    event = newEvent('Getting remote resource for PDF', originUrl)
+    event = new Event('PDFGEN', originUrl)
+    event.work 'Getting remote resource for PDF'
     # Send the HTML to the PDF script
-    pdf = spawn(argv.pdfgen, [ '-v', '--output=/dev/stdout', '/dev/stdin' ])
+    pdf = spawn(argv.pdfgen, [ '--no-network', '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ])
     remoteGet originUrl, event, (err, text, statusCode) -> 
       if text
-        updateEvent(event, "Got data. Writing to prince #{text.length} chars")
+        event.work "Got data. Writing to prince #{text.length} chars"
         pdf.stdin.write(text)
         pdf.stdin.end()
       else
-        updateEvent(event, "Error: #{JSON.stringify(err)}", 'FAILED')
+        event.fail err
         pdf.exit()
 
     pdfContent = ''
     pdf.stdout.on 'data', (data) ->
       pdfContent += data
     pdf.stderr.on 'data', (data) ->
-      updateEvent(event, "Warning: #{data}")
+      event.work "Warning: #{data}"
     
     pdf.on 'exit', (code) ->
       if 0 == code
         id = newFile(pdfContent)
         fileUrl = "#{argv.u}/files/#{id}"
-        updateEvent(event, 'PDF Done!', 'SUCCESS', fileUrl)
+        event.finish 'PDF Done!', fileUrl
       else
-        updateEvent(event, "Exit Code: #{code}.\n" + events[event].message, 'FAILED')
+        event.fail "PDF Failed. Exit Code: #{code}.\n#{event.message}"
 
-    res.send "#{argv.u}/events/#{event}"
+    res.send "#{argv.u}/events/#{event.id}"
   )
   
   #### Admin Page ####
   app.get('/admin', (req, res) ->
     res.render('admin.html', {}) # {} is vars
+  )
+  app.get('/scripts.js', (req, res) ->
+    res.render('scripts.html', {}) # {} is vars
   )
   
   #### Start the server ####
