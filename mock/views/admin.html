@@ -5,7 +5,6 @@
     <meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
     <meta content='width=device-width, height=device-height, initial-scale=1.0, user-scalable=no' name='viewport'>
     <script src='http://code.jquery.com/jquery-latest.js' type='text/javascript'></script>
-    <script src="/scripts.js" type="text/javascript"></script>
 
     <style type="text/css">
       table { width: 100%; }
@@ -118,7 +117,7 @@ tick = function() {
       } else {
         $('<td> - </td>').appendTo(row);
       }
-      $('<td><abbr class="easydate">'+event.created+'</abbr></td>').appendTo(row);
+      $('<td>'+event.created+'</td>').appendTo(row);
       
       // Calculate how long it has taken so far
       var start = new Date(event.created);

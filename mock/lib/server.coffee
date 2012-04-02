@@ -120,7 +120,7 @@ module.exports = exports = (argv) ->
       try
         $ = window.jQuery
         $('script').remove()
-        $('head').remove() # TODO: look up attribution here
+        # $('head').remove() # TODO: look up attribution here
         $('*[style]').removeAttr('style')
         
         event.work 'Cleaning up links'
@@ -182,7 +182,7 @@ module.exports = exports = (argv) ->
   # of the openID related routes which are at the end together.
 
   generatePdf = (resourceUrl) ->
-    pdfEvent = new Event('Generating PDF', resourceUrl)
+    pdfEvent = new Event('Requesting PDF', resourceUrl)
     remoteGet "#{argv.u}/pdf/derive?url=#{resourceUrl}", pdfEvent, (err, text, statusCode) ->
       pdfEvent.finish "PDF Request Sent!", text
   
@@ -198,7 +198,7 @@ module.exports = exports = (argv) ->
           id = newContent(cleanHtml)
           derivedUrl = "#{argv.u}/c/#{id}@0"
           event.finish 'Derived!', derivedUrl
-          event.links = links # For debugging
+          #event.links = links # For debugging
           # Deriving a copy doesn't depend on generating a PDF
           generatePdf(derivedUrl)
         )
@@ -289,10 +289,7 @@ module.exports = exports = (argv) ->
   app.get('/admin', (req, res) ->
     res.render('admin.html', {}) # {} is vars
   )
-  app.get('/scripts.js', (req, res) ->
-    res.render('scripts.html', {}) # {} is vars
-  )
-  
+
   #### Start the server ####
 
   app.listen(argv.p, argv.o if argv.o)
