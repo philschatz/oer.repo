@@ -39,8 +39,9 @@ module.exports = exports = (argv) ->
     }
     ver
 
-  class Event extends EventEmitter
+  class Task extends EventEmitter
     constructor: (@title, @origin) ->
+      @history = [] # Stores all the changes made to the event
       @status = 'PENDING'
       @created = @modified = new Date()
       # Push it into the array so admin can keep track of it
@@ -55,6 +56,7 @@ module.exports = exports = (argv) ->
       @message = message
       @modified = new Date()
       @status = status if status?
+      @history.push(message)
       console.log "Event: #{@message}"
     
     work: (message, status = 'WORKING') ->
@@ -77,10 +79,10 @@ module.exports = exports = (argv) ->
     files.push body
     id
 
-  remoteGet = (remoteUrl, event, cb) ->
+  remoteGet = (remoteUrl, task, cb) ->
     getopts = url.parse(remoteUrl)
-    event.work 'Requesting remote resource'
-    event.url = remoteUrl
+    task.work 'Requesting remote resource'
+    task.url = remoteUrl
     
     protocol = if 'https:' == getopts.protocol then https else http
     # TODO: This needs more robust error handling, just trying to
@@ -89,27 +91,27 @@ module.exports = exports = (argv) ->
       responsedata = ''
       resp.on('data', (chunk) ->
         responsedata += chunk
-        event.work 'Getting Data'
+        task.work 'Getting Data'
       )
       resp.on('error', (e) ->
-        event.fail e
+        task.fail e
         cb(e)
       )
       resp.on('end', ->
         if responsedata
-          event.work 'Got the resource'
+          task.work 'Got the resource'
           cb(null, responsedata, resp.statusCode)
         else
-          event.fail "Resource Not Found"
+          task.fail "Resource Not Found"
           cb(null, 'Page not found', 404)
       )
     ).on('error', (e) ->
-      event.fail e
+      task.fail e
       cb(e)
     )
 
-  cleanupHTML = (html, event, callback) ->
-    event.work 'Cleaning up HTML. Parsing...'
+  cleanupHTML = (html, task, callback) ->
+    task.work 'Cleaning up HTML. Parsing...'
     doc = jsdom.jsdom(html, null, 
       features:
         FetchExternalResources: false # ['img']
@@ -123,15 +125,15 @@ module.exports = exports = (argv) ->
         # $('head').remove() # TODO: look up attribution here
         $('*[style]').removeAttr('style')
         
-        event.work 'Cleaning up links'
+        task.work 'Cleaning up links'
         links = []
         $('a[href]').each (i, a) ->
           links.push $(a).attr('href')
         
-        event.work 'Done cleaning'
+        task.work 'Done cleaning'
         callback(doc.outerHTML, links)
       catch error
-        event.fail error
+        task.fail error
     )
 
   #### Express configuration ####
@@ -182,29 +184,29 @@ module.exports = exports = (argv) ->
   # of the openID related routes which are at the end together.
 
   generatePdf = (resourceUrl) ->
-    pdfEvent = new Event('Requesting PDF', resourceUrl)
-    remoteGet "#{argv.u}/pdf/derive?url=#{resourceUrl}", pdfEvent, (err, text, statusCode) ->
-      pdfEvent.finish "PDF Request Sent!", text
+    pdfTask = new Task('Requesting PDF', resourceUrl)
+    remoteGet "#{argv.u}/pdf/derive?url=#{resourceUrl}", pdfTask, (err, text, statusCode) ->
+      pdfTask.finish "PDF Request Sent!", text
   
   app.get('/derive', (req, res) ->
     originUrl = req.query.url
-    event = new Event('Deriving a copy', originUrl)
-    event.work 'Getting remote resource'
-    remoteGet originUrl, event, (err, text, statusCode) -> 
+    task = new Task('Deriving a copy', originUrl)
+    task.work 'Getting remote resource'
+    remoteGet originUrl, task, (err, text, statusCode) -> 
       if text
         # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
-        event.work('Cleaning up the HTML')
-        cleanupHTML(text, event, (cleanHtml, links) ->
+        task.work('Cleaning up the HTML')
+        cleanupHTML(text, task, (cleanHtml, links) ->
           id = newContent(cleanHtml)
           derivedUrl = "#{argv.u}/c/#{id}@0"
-          event.finish 'Derived!', derivedUrl
-          #event.links = links # For debugging
+          task.finish 'Derived!', derivedUrl
+          #task.links = links # For debugging
           # Deriving a copy doesn't depend on generating a PDF
           generatePdf(derivedUrl)
         )
       else
-        event.fail err
-    res.send "#{argv.u}/events/#{event.id}"
+        task.fail err
+    res.send "#{argv.u}/tasks/#{task.id}"
   )
 
   # For debugging
@@ -218,7 +220,7 @@ module.exports = exports = (argv) ->
     res.send content[req.params.id][ver].body
   )
 
-  app.get('/events/:id([0-9]+)?', (req, res) ->
+  app.get('/tasks/:id([0-9]+)?', (req, res) ->
     if req.params.id
       res.send JSON.stringify(events[req.params.id])
     else
@@ -229,15 +231,15 @@ module.exports = exports = (argv) ->
 
   app.post('/c/:id([0-9]+)', (req, res) ->
     html = req.body.body
-    event = new Event('Committing new version')
-    cleanupHTML(html, event, (cleanedHTML, links) ->
-      event.links = links
+    task = new Task('Committing new version')
+    cleanupHTML(html, task, (cleanedHTML, links) ->
+      task.links = links
       ver = updateContent(req.params.id, cleanedHTML)
       newUrl = "#{argv.u}/c/#{req.params.id}@#{ver}"
       generatePdf(newUrl)
-      event.finish 'Content updated!', newUrl
+      task.finish 'Content updated!', newUrl
     )
-    res.send "#{argv.u}/events/#{event.id}"
+    res.send "#{argv.u}/tasks/#{task.id}"
   )
 
   # Traditional request to / redirects to index :)
@@ -255,34 +257,34 @@ module.exports = exports = (argv) ->
   
   app.get('/pdf/derive', (req, res) ->
     originUrl = req.query.url
-    event = new Event('PDFGEN', originUrl)
-    event.work 'Getting remote resource for PDF'
+    task = new Task('PDFGEN', originUrl)
+    task.work 'Getting remote resource for PDF'
     # Send the HTML to the PDF script
     pdf = spawn(argv.pdfgen, [ '--no-network', '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ])
-    remoteGet originUrl, event, (err, text, statusCode) -> 
+    remoteGet originUrl, task, (err, text, statusCode) -> 
       if text
-        event.work "Got data. Writing to prince #{text.length} chars"
+        task.work "Got data. Writing to prince #{text.length} chars"
         pdf.stdin.write(text)
         pdf.stdin.end()
       else
-        event.fail err
+        task.fail err
         pdf.exit()
 
     pdfContent = ''
     pdf.stdout.on 'data', (data) ->
       pdfContent += data
     pdf.stderr.on 'data', (data) ->
-      event.work "Warning: #{data}"
+      task.work "Warning: #{data}"
     
     pdf.on 'exit', (code) ->
       if 0 == code
         id = newFile(pdfContent)
         fileUrl = "#{argv.u}/files/#{id}"
-        event.finish 'PDF Done!', fileUrl
+        task.finish 'PDF Done!', fileUrl
       else
-        event.fail "PDF Failed. Exit Code: #{code}.\n#{event.message}"
+        task.fail "PDF Failed. Exit Code: #{code}.\n#{task.message}"
 
-    res.send "#{argv.u}/events/#{event.id}"
+    res.send "#{argv.u}/tasks/#{task.id}"
   )
   
   #### Admin Page ####

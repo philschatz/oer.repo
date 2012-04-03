@@ -90,7 +90,7 @@ $('form').each(function(id, form) {
       type: method,
       data: params,
       success: function(text, status) {
-        //alert("Succeeded with message: " + text);
+        alert("Succeeded with message (Check this URL for status): " + text);
       }
     });
   });
@@ -98,30 +98,30 @@ $('form').each(function(id, form) {
 });
 
 tick = function() {
-  $.getJSON('/events', function(data, textStatus) {
+  $.getJSON('/tasks', function(data, textStatus) {
     monitor.children().detach();
     var table = $('<table><caption>Events</caption><tr><th>id</th><th>Status</th><th>Title</th><th>Message</th><th>Success URL</th><th>Created</th><th>Took</th><th>additional</th></tr></table>').appendTo(monitor);
 
     // Print in reverse
     data = data.reverse();
     for(var id in data) {
-      var event = data[id];
+      var task = data[id];
       
       var row = $('<tr/>').appendTo(table);
-      $('<td><a href="/events/'+event.id+'">'+event.id+'</a></td>').appendTo(row);
-      $('<td>'+event.status+'</td>').appendTo(row);
-      $('<td>'+event.title+'</td>').appendTo(row);
-      $('<td>'+event.message+'</td>').appendTo(row);
-      if(event.url) {
-        $('<td><a href="' + event.url + '">' + event.url + '</a></td>').appendTo(row);
+      $('<td><a href="/tasks/'+task.id+'">'+task.id+'</a></td>').appendTo(row);
+      $('<td>'+task.status+'</td>').appendTo(row);
+      $('<td>'+task.title+'</td>').appendTo(row);
+      $('<td>'+task.message+'</td>').appendTo(row);
+      if(task.url) {
+        $('<td><a href="' + task.url + '">' + task.url + '</a></td>').appendTo(row);
       } else {
         $('<td> - </td>').appendTo(row);
       }
-      $('<td>'+event.created+'</td>').appendTo(row);
+      $('<td>'+task.created+'</td>').appendTo(row);
       
       // Calculate how long it has taken so far
-      var start = new Date(event.created);
-      var modified = new Date(event.modified);
+      var start = new Date(task.created);
+      var modified = new Date(task.modified);
       var diff = modified.getTime() - start.getTime();
       var minutes = Math.floor(diff / (1000 * 60));
       var seconds = (diff / 1000) % 60;
@@ -132,21 +132,21 @@ tick = function() {
       }
       spent += seconds + 's';
       
-      $('<td><abbr title="' + event.modified + '">'+spent+'</abbr></td>').appendTo(row);
+      $('<td><abbr title="' + task.modified + '">'+spent+'</abbr></td>').appendTo(row);
       
-      var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified'];
+      var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified', 'history'];
       for(var i in remove) {
         var key = remove[i];
-        if(key in event) {
-          delete event[key];
+        if(key in task) {
+          delete task[key];
         }
       }
 
       var json = '{';
-      for(var key in event) {
+      for(var key in task) {
         json += key;
         json += ':"';
-        json += event[key];
+        json += task[key];
         json += '", ';
       }
       json += '}';      
