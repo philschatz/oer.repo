@@ -22,3 +22,5 @@ And, to start it up::
   $ node mock/bin/server.js
 
 Optionally you can use `wkhtml2pdf` to generate a PDF by using the ``--pdfgen /path/to/wkhtml2pdf`` command line option.
+
+Then, point your browser to the admin interface at http://localhost:3000/admin
