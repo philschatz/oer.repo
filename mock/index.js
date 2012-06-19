@@ -3,4 +3,4 @@
 // in node it instead requires ./lib/server.coffee
 // with coffee-script already loaded.
 require('coffee-script');
-module.exports = require('./lib/server');
+module.exports = require('./src/server');
