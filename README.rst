@@ -1,4 +1,4 @@
-`==============
+==============
  What is this?
 ==============
 
@@ -20,6 +20,10 @@ To download the dependencies::
 And, to start it up::
 
   $ node mock/bin/server.js
+
+Or, to specify a port and hostname::
+
+  $ node mock/bin/server.js -p 3001 --pdfgen /path/to/prince
 
 Optionally you can use `wkhtml2pdf` to generate a PDF by using the ``--pdfgen /path/to/wkhtml2pdf`` command line option.
 
