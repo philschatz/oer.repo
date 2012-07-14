@@ -28,6 +28,7 @@
       abbr { white-space: nowrap; }
       
       .monitor,
+      .login,
       .create, .update, 
       .derive {
         float: left;
@@ -40,6 +41,27 @@
     </style>
   </head>
   <body>
+
+    <div class="login">
+      <h2>Log in to Create Content</h2>
+      <form action="/login" method="POST">
+        <p>Log in with one of these OpenID Providers:</p>
+        <select name="identifier">
+          <option value="https://www.google.com/accounts/o8/id">Google</option>
+          <option value="https://me.yahoo.com">Yahoo</option>
+          <option value="https://openid.stackexchange.com/">StackExchange</option>
+          <option value="https://www.aol.com">AOL</option>
+          <option value="http://www.livejournal.com/openid/server.bml">Live Journal</option>
+        </span>
+        <input type="submit" value="Log In"/>
+      </form>
+
+      <p>Or, provide a URL given by your OpenID Provider</p>
+      <form action="/login" method="POST">
+        <input name="identifier"/>
+        <input type="submit" value="Log In"/>
+      </form>
+    </div>
 
     <div class="create">
       <h2>Create new Content</h2>
@@ -140,6 +162,14 @@ $('form').each(function(id, form) {
       data: params,
       success: function(text, status) {
         alert("Succeeded with message (Check this URL for status): " + text);
+      },
+      statusCode: {
+        404: function() {
+          alert("Error! Did you log in? To Perform this operation you must be logged in");
+        }
+      },
+      error: function(jqXHR, textStatus, errorThrown) {
+        alert("Failed! Did you log in?");
       }
     });
   });

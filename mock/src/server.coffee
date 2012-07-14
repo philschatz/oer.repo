@@ -8,7 +8,11 @@ module.exports = exports = (argv) ->
   path        = require('path')
   hbs         = require('hbs')
   fs          = require('fs') # Just to load jQuery
+  # Authentication machinery
+  passport    = new (require('passport')).Passport()
+  OpenIDstrat = require('passport-openid').Strategy
 
+  # Local util objects/functions
   Task        = require('./util').Task
   cleanupHTML = require('./util').cleanupHTML
   remoteGet   = require('./util').remoteGet
@@ -41,6 +45,34 @@ module.exports = exports = (argv) ->
     }
     ver
 
+  #### Authentication Functions ####
+
+  # For requests that need to be authenticated, add this into the pipe
+  # by the owner, and returns 403 if someone else tries.
+  authenticated = (req, res, next) ->
+    if req.isAuthenticated()
+      next()
+    else res.send('Access Forbidden', 403)
+
+  # Simplest possible way to serialize and deserialize a user. (to store in a session)
+  passport.serializeUser( (user, done) ->
+    done(null, user.id)
+  )
+  passport.deserializeUser( (id, done) ->
+    done(null, {id})
+  )
+
+  # Tell passport to use the OpenID strategy.
+  passport.use(new OpenIDstrat({
+    returnURL: "#{argv.u}/login/openid"
+    realm: "#{argv.u}"
+    identifierField: 'identifier'
+  },
+  ((id, done) ->
+    console.log "Authenticated as #{ id }" if argv.debug
+    done(null, {id})
+  )))
+
   #### Express configuration ####
   # Set up all the standard express server options,
   # including hbs to use handlebars/mustache templates
@@ -54,6 +86,8 @@ module.exports = exports = (argv) ->
     app.use(express.bodyParser())
     app.use(express.methodOverride())
     app.use(express.session({ secret: 'notsecret'}))
+    app.use(passport.initialize())
+    app.use(passport.session()) # Must occur after express.session()
     app.use(app.router)
     app.use(express.static(argv.c))
   )
@@ -97,7 +131,7 @@ module.exports = exports = (argv) ->
   CONTENT = "content"
   
   # Create a new resource from scratch
-  app.post('/create', (req, res) ->
+  app.post('/create', authenticated, (req, res) ->
     html = req.body.body
     task = new Task('Creating new Content')
     task.work('Cleaning up the HTML')
@@ -114,7 +148,7 @@ module.exports = exports = (argv) ->
 
   # Derive a copy of an existing resource
   # This can be any URL (for federation)
-  app.get('/derive', (req, res) ->
+  app.get('/derive', authenticated, (req, res) ->
     originUrl = req.query.url
     task = new Task('Deriving a copy', originUrl)
     task.work 'Getting remote resource'
@@ -156,7 +190,7 @@ module.exports = exports = (argv) ->
 
   ##### Post routes #####
 
-  app.post("/#{ CONTENT }/:id([0-9]+)", (req, res) ->
+  app.post("/#{ CONTENT }/:id([0-9]+)", authenticated, (req, res) ->
     html = req.body.body
     task = new Task('Committing new version')
     cleanupHTML(html, task, (cleanedHTML, links) ->
@@ -198,6 +232,27 @@ module.exports = exports = (argv) ->
 
   app.get('/jquery-latest.js', (req, res) ->
     res.send(fs.readFileSync(__dirname+ '/../lib/jquery.min.js', 'utf-8'))
+  )
+
+  ##### Routes used for openID authentication #####
+  # Redirect to oops when login fails.
+  app.post('/login',
+    passport.authenticate('openid', { failureRedirect: '/error'}),
+    (req, res) ->
+      res.redirect('index')
+  )
+
+  # Route that the openID provider redirects user to after login.
+  app.get('/login/openid',
+    passport.authenticate('openid', { failureRedirect: '/error'}),
+    (req, res) ->
+      res.redirect('index')
+  )
+
+  # Logout when /logout is hit with any http method.
+  app.all('/logout', (req, res) ->
+    req.logout()
+    res.redirect('index')
   )
 
 

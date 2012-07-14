@@ -10,7 +10,9 @@
     "coffee-script": "~1.2",
     "express": "~2.5",
     "optimist": "~0.3",
-    "jsdom": "~0.2"
+    "jsdom": "~0.2",
+    "passport": "~0.1.5",
+    "passport-openid": "~0.1.1"
   },
   "scripts": {
     "test": "./node_modules/mocha/bin/mocha"
