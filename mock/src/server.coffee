@@ -31,19 +31,28 @@ module.exports = exports = (argv) ->
   # best to supply sane defaults for any arguments that are missing.
   argv = require('./defaultargs')(argv)
   
-  newContent = (body) ->
+  newContent = (user, body) ->
     id = content.length
     # Wrapped in array because it's version 0
     content.push []
-    updateContent id, body
+    updateContent id, body, [ user ]
     id
-  updateContent = (id, body) ->
+  updateContent = (id, body, users=null) ->
     resource = content[id]
     ver = resource.length
-    resource.push {
-      'body': body
-    }
+    newVer =
+      users: users
+      body: body
+    # If updating content and not changing the set of allowed users
+    # Just use the previous set of users
+    if not users
+      newVer.users = resource[ver - 1].users
+    resource.push newVer
     ver
+  # Checks if a given user can modify a given piece of content
+  canChangeContent = (id, user) ->
+    resource = content[id]
+    return resource[resource.length - 1].users.indexOf user >= 0
 
   #### Authentication Functions ####
 
@@ -136,7 +145,7 @@ module.exports = exports = (argv) ->
     task = new Task('Creating new Content')
     task.work('Cleaning up the HTML')
     cleanupHTML(html, task, (cleanHtml, links) ->
-      id = newContent(cleanHtml)
+      id = newContent(req.user, cleanHtml)
       derivedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
       task.finish 'Published!', derivedUrl
       #task.links = links # For debugging
@@ -157,7 +166,7 @@ module.exports = exports = (argv) ->
         # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
         task.work('Cleaning up the HTML')
         cleanupHTML(text, task, (cleanHtml, links) ->
-          id = newContent(cleanHtml)
+          id = newContent(req.user, cleanHtml)
           derivedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
           task.finish 'Derived!', derivedUrl
           #task.links = links # For debugging
@@ -191,16 +200,20 @@ module.exports = exports = (argv) ->
   ##### Post routes #####
 
   app.post("/#{ CONTENT }/:id([0-9]+)", authenticated, (req, res) ->
-    html = req.body.body
-    task = new Task('Committing new version')
-    cleanupHTML(html, task, (cleanedHTML, links) ->
-      task.links = links
-      ver = updateContent(req.params.id, cleanedHTML)
-      newUrl = "#{argv.u}/#{ CONTENT }/#{req.params.id}@#{ver}"
-      requestPdf(newUrl)
-      task.finish 'Content updated!', newUrl
-    )
-    res.send "#{argv.u}/tasks/#{task.id}"
+    if canChangeContent req.params.id, req.user
+      html = req.body.body
+      task = new Task('Committing new version')
+      cleanupHTML(html, task, (cleanedHTML, links) ->
+        task.links = links
+        ver = updateContent(req.params.id, cleanedHTML) # Don't send a set of new users
+        newUrl = "#{argv.u}/#{ CONTENT }/#{req.params.id}@#{ver}"
+        requestPdf(newUrl)
+        task.finish 'Content updated!', newUrl
+      )
+      res.send "#{argv.u}/tasks/#{task.id}"
+    else
+      # User is not allowed to make changes
+      res.send 403
   )
 
   # Traditional request to / redirects to index :)
