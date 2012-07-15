@@ -9,7 +9,23 @@
 -->
     <script src='/jquery-latest.js' type='text/javascript'></script>
 
+
+  <!-- These CSS/javascript files depend on where Aloha is located -->
+	<link rel="stylesheet" type="text/css" href="./Aloha-Editor/src/css/aloha.css" />
+  <!-- These are the CSS/Javascript files that aren't written as Aloha Plugins -->
+<!--	<link rel="stylesheet" type="text/css" href="./oerpub.editor/page.css" />
+-->
+
+  <!-- These render the toolbar and menubar -->
+  <link rel="stylesheet" type="text/css" href="./oerpub.editor/appmenu/appmenu.css" />
+
+
     <style type="text/css">
+    
+      .toolbar { position: fixed; top: 0; width: 100%; z-index: 1000;}
+      .document { border: 2px solid blue; min-height: 4em; }
+      body { margin-top: 3em; }
+    
       body {
         counter-reset: step-number;
         background-color: #F0F1EB;
@@ -39,6 +55,51 @@
       }
       
     </style>
+
+<script type="text/javascript">
+window.Aloha = window.Aloha || {};
+Aloha.settings = Aloha.settings || {};
+
+// In order to load the toolbar plugin Aloha needs to know where to look it up
+// Since the toolbar plugin begins with "custom/" in @data-aloha-plugins
+// This points Aloha to use the current directory to find toolba/lib/toolbar-plugin
+Aloha.settings.bundles = {
+  'custom': '/oerpub.editor/' //document.location.href.replace(/[a-z]+\.html/, '') + ,
+};
+
+</script>
+
+<!-- The first plugins are required but the rest are included for playing around with -->
+	<script src="./Aloha-Editor/src/lib/aloha.js" data-aloha-plugins="
+
+            custom/toolbar,
+            common/dom-to-xhtml,
+              common/format,
+
+              extra/cite,
+              extra/flag-icons,
+              extra/wai-lang,
+              common/table,
+              common/list,
+              common/link,
+              common/block,
+              common/undo,
+              common/contenthandler,
+              common/paste,
+              common/commands,
+              common/image,
+              common/abbr,
+              extra/browser,
+              extra/linkbrowser,
+              extra/sourceview"></script>
+
+  <!-- Provide a hotkey handler -->
+  <script>jQuery = Aloha.jQuery; // Set window.jQuery because hotkeys bind to it</script>
+  <script src="./oerpub.editor/lib/jquery.hotkeys.js"></script>
+
+  <script src="./oerpub.editor/appmenu/appmenu.js"></script>
+
+
   </head>
   <body>
 
@@ -239,7 +300,7 @@ tick = function() {
     //$(".easydate").easydate();
     
   });
-  setTimeout(tick, 1000);
+  setTimeout(tick, 5000);
 };
 
 tick();
@@ -248,5 +309,40 @@ tick();
 
 //-->
     </script>
+
+
+
+
+
+<!-- Use the new cool editor if it exists -->
+  
+
+
+<!-- With some fancy Javascript wrap each form with a textarea with an editor -->
+<script>//<![CDATA[
+
+
+Aloha.jQuery('<div />').addClass('toolbar').prependTo('body');
+
+// Once Aloha has loaded, bind it all
+Aloha.ready(function() {
+
+  var texts = Aloha.jQuery('textarea');
+  texts.each(function(i, el) {
+
+    var $el = Aloha.jQuery(el);
+    $el.hide();
+    
+    var edit = Aloha.jQuery('<div>Insert HTML here</div>').addClass('document').insertAfter($el).aloha();
+    
+    setInterval(function() {
+      $el.val('<html><body>' + edit.html().trim() + '</body></html>');
+    }, 1000);
+  }); // End texts.each
+}); // End Aloha.ready
+// ]]>
+</script>
+
+
   </body>
 </html>
