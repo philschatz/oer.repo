@@ -274,7 +274,7 @@ module.exports = exports = (argv) ->
   app.listen(argv.p, argv.o if argv.o)
   # When server is listening emit a ready event.
   app.emit "ready"
-  console.log("Server listening on #{app.address().port} in mode: #{app.settings.env}")
+  console.log("Server listening in mode: #{app.settings.env}")
 
   # Return app when called, so that it can be watched for events and shutdown with .close() externally.
   app

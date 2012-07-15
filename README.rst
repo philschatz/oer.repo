@@ -19,12 +19,17 @@ To download the dependencies::
 
 And, to start it up::
 
-  $ node mock/bin/server.js
+  $ node bin/server.js
 
 Or, to specify a port and hostname::
 
-  $ node mock/bin/server.js -p 3001 --pdfgen /path/to/prince
+  $ node bin/server.js -p 3001 --pdfgen /path/to/prince
 
 Optionally you can use `wkhtml2pdf` to generate a PDF by using the ``--pdfgen /path/to/wkhtml2pdf`` command line option.
 
 Then, point your browser to the admin interface at http://localhost:3000/admin
+
+If you are running this on an Internet-facing webserver then you will also need to specify the OpenID Domain (localhost is the default) as a command-line argument.
+
+  $ node bin/server -u "http://example.com:3000" 
+

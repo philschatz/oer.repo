@@ -9,6 +9,7 @@
   "dependencies": {
     "coffee-script": "~1.2",
     "express": "~2.5",
+    "hbs": "~1.0.1",
     "optimist": "~0.3",
     "jsdom": "~0.2",
     "passport": "~0.1.5",
