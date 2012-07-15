@@ -322,10 +322,15 @@ tick();
 <script>//<![CDATA[
 
 
-Aloha.jQuery('<div />').addClass('toolbar').prependTo('body');
+var header = Aloha.jQuery('<div />').addClass('header').prependTo('body');
+Aloha.jQuery('<div />').addClass('menubar').prependTo(header);
+Aloha.jQuery('<div />').addClass('toolbar').prependTo(header);
 
 // Once Aloha has loaded, bind it all
 Aloha.ready(function() {
+
+  var edits = ['<div><p>Hello there!</p><p>You can enter any HTML in here.</p><h1>Heading1</h1><h3>Heading 3</h3><ul><li>Lists supported</li><li><ol><li>And sublists</li></ol></li><p>Lists <b>and</b> <i>multiple</i> lines, <sub>subscripts</sub>, <q>quotes</q>, <a href="http://cnx.org">links</a>!</p></div>', '<div>Insert Some other HTML here</div>']
+  var editIndex = 0;
 
   var texts = Aloha.jQuery('textarea');
   texts.each(function(i, el) {
@@ -333,7 +338,7 @@ Aloha.ready(function() {
     var $el = Aloha.jQuery(el);
     $el.hide();
     
-    var edit = Aloha.jQuery('<div>Insert HTML here</div>').addClass('document').insertAfter($el).aloha();
+    var edit = Aloha.jQuery(edits[editIndex++ % edits.length]).addClass('document').insertAfter($el).aloha();
     
     setInterval(function() {
       $el.val('<html><body>' + edit.html().trim() + '</body></html>');
