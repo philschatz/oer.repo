@@ -10,6 +10,7 @@ module.exports = exports = (argv) ->
   hbs         = require('hbs')
   fs          = require('fs') # Just to load jQuery
   Q           = require('q')  # Promises, promises
+  AdmZip      = require('adm-zip')
   # Authentication machinery
   passport    = new (require('passport')).Passport()
   OpenIDstrat = require('passport-openid').Strategy
@@ -29,6 +30,12 @@ module.exports = exports = (argv) ->
 
   # Create the main application object, app.
   app = express.createServer()
+
+  # bodyParser in connect 2.x uses node-formidable to parse 
+  # the multipart form data.
+  # Used for getting Zips deposited via POST
+  app.use(express.bodyParser())
+
   # defaultargs.coffee exports a function that takes the argv object that is passed in and then does its
   # best to supply sane defaults for any arguments that are missing.
   argv = require('./defaultargs')(argv)
@@ -162,9 +169,8 @@ module.exports = exports = (argv) ->
   # This can be any URL (for federation)
   # It can also be several URLs.
   # Each query parameter is either an id (in which case it's an update) or "new" in which case it's new content
-  app.get('/deposit', authenticated, (req, res) ->
-    originUrl = req.query.url
-    task = new Task('Depositing content', originUrl)
+  app.post('/deposit', authenticated, (req, res, next) ->
+    task = new Task('Depositing content')
     task.work 'Getting remote resource'
     # promises will eventually be an array of id's pointing to content that has been imported
     idsPromise = []
@@ -184,13 +190,20 @@ module.exports = exports = (argv) ->
       goInto: (href) ->
         new PathContext(@zipFile, path.normalize(path.join(@basePath, href)))
       getData: (callback) ->
-        @zipFile.readFileAsync @basePath, (data) ->
-          callback(data?, data)
+        entry = @zipFile.getEntry(@basePath) 
+        data = entry.getData() if entry
+        callback(entry?, data)
+        #@zipFile.readFileAsync @basePath, (data) ->
+        #  callback(data?, data)
     
     # First, invert the query string so the dictionary is { depositURL -> repoId }
     contentMap = {}
     zipFile = null
-    for id, urls of req.query
+    if req.files.body
+      task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
+      zipFile = new AdmZip(req.files.body.path)
+
+    for id, urls of req.body
       # Either it's new content or it's a new version of existing content
       if id == 'url'
         if urls not instanceof Array
@@ -198,18 +211,19 @@ module.exports = exports = (argv) ->
         # For each piece of new content deposit it and get back the id
         for originUrl in urls
           contentMap[originUrl] = id
-      else if id == 'body'
-        zipFile = new AdmZip(urls) # TODO: convert POST param to Buffer
       else
         contentMap[urls] = id
-  
+    
     for contentUrl, id of contentMap
       scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
         contentUrl = url.parse(contentUrl)
         if contentUrl.hostname
           context = new UrlContext(task, contentUrl)
         else if zipFile
-          context = new PathContext(zipFile, url.pathname)
+          # Verify the file exists in the zip
+          if not zipFile.getEntry(contentUrl.pathname)
+            throw new Error("Uploaded zip file does not contain a file named #{contentUrl.pathname}")
+          context = new PathContext(zipFile, contentUrl.pathname)
         else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
 
         deferred = Q.defer()
@@ -232,7 +246,7 @@ module.exports = exports = (argv) ->
             )
       scopingHack(contentUrl, id)
 
-    task.wait("Trying to deposit #{idsPromise.length} URLs #{req.query}")
+    task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
     Q.all(idsPromise)
     .then( (o) -> 
       console.log 'Finished depositing. Got back:', o
@@ -246,6 +260,7 @@ module.exports = exports = (argv) ->
       task.finish 'All Deposited!', urls)
     .fail (o) -> task.error 'Problem depositing some content'
     res.send "#{argv.u}/tasks/#{task.id}"
+
   )
 
   # For debugging

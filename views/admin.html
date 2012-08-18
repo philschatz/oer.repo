@@ -145,13 +145,13 @@ Aloha.settings.bundles = {
     
     <div class="deposit">
       <h2>Deposit new content from a URL</h2>
-      <form action="/deposit">
+      <form action="/deposit" method="POST">
         <span>URL: </span>
         <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
         <input type="button" name="submit" value="Deposit!"/>
       </form>
 
-      <form action="/deposit">
+      <form action="/deposit" method="POST">
         <span>Or pick one: </span>
         <select name="url">
           <option value="http://cnx.org/content/m9003/latest/">cnx.org module m9003</option>
@@ -159,6 +159,17 @@ Aloha.settings.bundles = {
           <option value="https://docs.google.com/document/pub?id=1Cv5ozsGi5ukXTe8d_NlDExQg-o1lHvKuLH8RVJXqZRE">Published Google Doc (uses https)</option>
         <input type="button" name="submit" value="Deposit!"/>
       </form>
+    </div>
+
+    <div class="deposit">
+      <h2>Multiple Deposits with a Zip</h2>
+      <form action="/deposit" method="POST" enctype="multipart/form-data">
+        <span>URL 1:</span> <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/><sup title="This can be an absolute URL or a relative href into the Zip file">(*)</sup>
+        <br/><span>URL 2:</span> <input name="url" value="index.html" style="width: 20em;"/><sup title="This can be an absolute URL or a relative href into the Zip file">(*)</sup>
+        <br/><span>Zip File:</span> <input name="body" type="file"/>
+        <br/><input type="submit" value="Deposit!"/>
+      </form>
+
     </div>
 
     <div class="update">
@@ -195,7 +206,7 @@ Aloha.settings.bundles = {
 var monitor = $('.monitor');
 
 //Make the forms AJAXy
-$('form').each(function(id, form) {
+$('form:not(enctype=multipart/form-data)').each(function(id, form) {
   var $form = $(form);
   var action = $form.attr('action');
   var method = $form.attr('method');
