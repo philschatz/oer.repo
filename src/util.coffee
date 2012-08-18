@@ -1,7 +1,8 @@
 EventEmitter = require('events').EventEmitter
 jsdom = require('jsdom') # For HTML cleanup
+Q = require('q') # Promises, Promises
 
-module.exports.files = files = []
+module.exports.resources = resources = []
 module.exports.events = events = []
 module.exports.Task = class Task extends EventEmitter
   constructor: (@title, @origin) ->
@@ -14,12 +15,12 @@ module.exports.Task = class Task extends EventEmitter
 
   _update: (message, status) ->
     if @status == 'FINISHED' or @status == 'FAILED'
-      err = { event: @, message: "This event already completed with status #{@status} and message='#{message}'", newMessage: message, newStatus: status }
+      err = { event: @, message: "This event already completed with status #{@status} and message='#{@message}'", newMessage: message, newStatus: status }
       console.log err
       throw err
     @message = message
     @modified = new Date()
-    @status = status if status?
+    @status = status
     @history.push(message)
     console.log "Event(#{@id}): #{@status} #{@message}"
   
@@ -42,7 +43,8 @@ module.exports.Task = class Task extends EventEmitter
     @emit('success', 'FINISHED')
 
 
-module.exports.cleanupHTML = cleanupHTML = (html, task, callback) ->
+module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer) ->
+  deferred = Q.defer()
   task.work 'Cleaning up HTML. Parsing...'
   doc = jsdom.jsdom(html, null, 
     features:
@@ -58,17 +60,31 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, callback) ->
       $('*[style]').removeAttr('style')
       
       task.work 'Cleaning up links'
-      links = []
-      $('a[href]').each (i, a) ->
-        links.push $(a).attr('href')
+      #$('a[href]').each (i, a) ->
+      #  $a = $(@)
+      #  resourceRenamer $a.attr('href'), (err, newUrl) ->
+      #    $a.attr('href', newUrl)
+      $images = $('img[src]')
+      promises = $images.length
+      Q.fcall () ->
+        $images.each (i, a) ->
+          $el = $(@)
+          resourceRenamer $el.attr('src'), (err, newUrl) ->
+            $el.attr('src', newUrl)
+            # Icky hack. I need to make more things promises
+            promises--
+            if promises == 0
+              task.work 'Done cleaning'
+              deferred.resolve(doc.outerHTML)
+            else
+              task.work "Apparently more images to go through: #{promises}"
       
-      task.work 'Done cleaning'
-      callback(doc.outerHTML, links)
     catch error
       console.log 'cleanupHTML ERROR:'
       console.log error
       task.fail error
   )
+  deferred.promise
 
 
 
@@ -76,7 +92,7 @@ http = require('http')
 https = require('https')
 url = require('url')
 
-module.exports.remoteGet = remoteGet = (remoteUrl, task, cb) ->
+module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   getopts = url.parse(remoteUrl)
   task.work "Requesting remote resource #{ remoteUrl }"
   task.url = remoteUrl
@@ -85,34 +101,44 @@ module.exports.remoteGet = remoteGet = (remoteUrl, task, cb) ->
   # TODO: This needs more robust error handling, just trying to
   # keep it from taking down the server.
   protocol.get(getopts, (resp) ->
-    responsedata = ''
+    responsedata = []
+    responseLen = 0
     resp.on('data', (chunk) ->
-      responsedata += chunk
-      task.work 'Getting Data'
+      responsedata.push(chunk)
+      responseLen += chunk.length
+      task.work "Getting Data from #{remoteUrl} (#{chunk.length})"
     )
     resp.on('error', (e) ->
       task.fail e
-      cb(e)
+      callback(e)
     )
     resp.on('end', ->
-      if responsedata
+      if responsedata.length
         task.work 'Got the resource'
-        cb(null, responsedata, resp.statusCode)
+        buf = new Buffer(responseLen)
+        pos = 0
+        for chunk in responsedata
+          chunk.copy(buf, pos)
+          pos += chunk.length
+        callback(null, buf, resp.statusCode)
       else
         task.fail "Resource Not Found"
-        cb(null, 'Page not found', 404)
+        callback('Resource not found', 'Page not found', 404)
     )
   ).on('error', (e) ->
     task.fail e
-    cb(e)
+    callback(e)
   )
 
 
-# Used to add a PDF to the list of files available
-newFile = (body) ->
-  id = files.length
+# Used to add a PDF to the list of resources available
+module.exports.newResource = newResource = (content, contentType, originalURL) ->
+  id = resources.length
   # Wrapped in array because it's version 0
-  files.push body
+  resources.push
+    content: content
+    contentType: contentType
+    originalURL: originalURL
   id
 
 
@@ -141,8 +167,8 @@ module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
   
   pdf.on 'exit', (code) ->
     if 0 == code
-      id = newFile(pdfContent)
-      fileUrl = "#{argv.u}/files/#{id}"
+      id = newResource(pdfContent, 'application/pdf')
+      fileUrl = "#{argv.u}/resource/#{id}"
       task.finish 'PDF Done!', fileUrl
     else
       task.fail "PDF Failed. Exit Code: #{code}.\n#{task.message}"

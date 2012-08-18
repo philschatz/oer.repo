@@ -17,6 +17,7 @@ module.exports = exports = (argv) ->
 
   # Local util objects/functions
   Task        = require('./util').Task
+  newResource = require('./util').newResource
   cleanupHTML = require('./util').cleanupHTML
   remoteGet   = require('./util').remoteGet
   generatePDF = require('./util').generatePDF
@@ -25,7 +26,7 @@ module.exports = exports = (argv) ->
   # Stores in-memory state
   content = []
   # The following are imported because the Task adds to the array
-  files   = require('./util').files
+  resources   = require('./util').resources
   events  = require('./util').events
 
   # Create the main application object, app.
@@ -154,11 +155,11 @@ module.exports = exports = (argv) ->
     html = req.body.body
     task = new Task('Creating new Content')
     task.work('Cleaning up the HTML')
-    cleanupHTML(html, task, (cleanHtml, links) ->
+    resourceRenamer = (href, callback) -> callback(null)
+    promise = cleanupHTML(html, task, resourceRenamer, (cleanHtml) ->
       id = newContent(req.user, cleanHtml)
       depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
       task.finish 'Published!', depositedUrl
-      #task.links = links # For debugging
       # Deriving a copy doesn't depend on generating a PDF
       requestPdf(depositedUrl)
     )
@@ -192,14 +193,14 @@ module.exports = exports = (argv) ->
       getData: (callback) ->
         entry = @zipFile.getEntry(@basePath) 
         data = entry.getData() if entry
-        callback(entry?, data)
+        callback(not entry?, data)
         #@zipFile.readFileAsync @basePath, (data) ->
         #  callback(data?, data)
     
     # First, invert the query string so the dictionary is { depositURL -> repoId }
     contentMap = {}
     zipFile = null
-    if req.files.body
+    if req.files and req.files.body
       task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
       zipFile = new AdmZip(req.files.body.path)
 
@@ -218,21 +219,34 @@ module.exports = exports = (argv) ->
       scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
         contentUrl = url.parse(contentUrl)
         if contentUrl.hostname
+          # TODO: Split off the text after the last slash
           context = new UrlContext(task, contentUrl)
         else if zipFile
           # Verify the file exists in the zip
           if not zipFile.getEntry(contentUrl.pathname)
             throw new Error("Uploaded zip file does not contain a file named #{contentUrl.pathname}")
+          # TODO: Split off the text after the last slash
           context = new PathContext(zipFile, contentUrl.pathname)
         else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
 
         deferred = Q.defer()
         idsPromise.push deferred.promise
+        # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
+        resourceRenamer = (href, callback) ->
+          context.goInto(href).getData (err, content) ->
+            if not err
+              # "Import" the resource
+              rid = newResource(content, 'image/png', context.goInto(href).baseUrl)
+            else
+              console.log "Error depositing resource because of status=#{status}"
+            callback(err, "#{argv.u}/resource/#{rid}")
+        
         context.getData (err, text, statusCode) ->
           if text
             # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
             task.work('Cleaning up the HTML')
-            cleanupHTML(text, task, (cleanHtml, links) ->
+            promise = cleanupHTML(text, task, resourceRenamer)
+            promise.then (cleanHtml) ->
               if id == 'url'
                 id = newContent(req.user, cleanHtml)
                 ver = 0
@@ -243,13 +257,12 @@ module.exports = exports = (argv) ->
               deferred.resolve
                 id: id
                 ver: ver
-            )
+            
       scopingHack(contentUrl, id)
 
     task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
     Q.all(idsPromise)
     .then( (o) -> 
-      console.log 'Finished depositing. Got back:', o
       urls = []
       for content in o
         depositedUrl = "#{argv.u}/#{ CONTENT }/#{content.id}@#{content.ver}"
@@ -287,8 +300,8 @@ module.exports = exports = (argv) ->
     if canChangeContent req.params.id, req.user
       html = req.body.body
       task = new Task('Committing new version')
-      cleanupHTML(html, task, (cleanedHTML, links) ->
-        task.links = links
+      resourceRenamer = (href, callback) -> callback(null)
+      cleanupHTML(html, task, resourceRenamer, (cleanedHTML) ->
         ver = updateContent(req.params.id, cleanedHTML) # Don't send a set of new users
         newUrl = "#{argv.u}/#{ CONTENT }/#{req.params.id}@#{ver}"
         requestPdf(newUrl)
@@ -309,10 +322,11 @@ module.exports = exports = (argv) ->
   # Fortunately we just need to implement "derive"
   # We can piggy back on the in-mem event system
   
-  app.get('/files/:id([0-9]+)', (req, res) ->
-    # Set the mimetype for PDF
-    res.contentType 'application/pdf'
-    res.send files[req.params.id]
+  app.get('/resource/:id([0-9]+)', (req, res) ->
+    # Set the mimetype for the resource
+    resource = resources[req.params.id]
+    res.contentType resource.contentType
+    res.send resource.content
   )
   
   app.get('/pdf/deposit', (req, res) ->
