@@ -74,7 +74,7 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer) ->
             # Icky hack. I need to make more things promises
             promises--
             if promises == 0
-              task.work 'Done cleaning'
+              task.work "Done cleaning. 0 more images to go through"
               deferred.resolve(doc.outerHTML)
             else
               task.work "Apparently more images to go through: #{promises}"

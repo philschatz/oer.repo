@@ -187,11 +187,17 @@ module.exports = exports = (argv) ->
       getData: (callback) ->
         remoteGet @baseUrl, task, callback
     class PathContext extends Context
-      constructor: (@zipFile, @basePath) ->
+      constructor: (@task, @zipFile, @basePath) ->
       goInto: (href) ->
-        new PathContext(@zipFile, path.normalize(path.join(@basePath, href)))
+        # Local files in the zip can either point to other local files
+        # or to remote files.
+        if url.parse(href).hostname
+          new UrlContext(@task, url.parse(href))
+        else
+          new PathContext(@task, @zipFile, path.normalize(path.join(@basePath, href)))
       getData: (callback) ->
         entry = @zipFile.getEntry(@basePath) 
+        console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
         data = entry.getData() if entry
         callback(not entry?, data)
         #@zipFile.readFileAsync @basePath, (data) ->
@@ -226,7 +232,7 @@ module.exports = exports = (argv) ->
           if not zipFile.getEntry(contentUrl.pathname)
             throw new Error("Uploaded zip file does not contain a file named #{contentUrl.pathname}")
           # TODO: Split off the text after the last slash
-          context = new PathContext(zipFile, contentUrl.pathname)
+          context = new PathContext(task, zipFile, contentUrl.pathname)
         else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
 
         deferred = Q.defer()
@@ -242,7 +248,7 @@ module.exports = exports = (argv) ->
             callback(err, "#{argv.u}/resource/#{rid}")
         
         context.getData (err, text, statusCode) ->
-          if text
+          if not err
             # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
             task.work('Cleaning up the HTML')
             promise = cleanupHTML(text, task, resourceRenamer)
@@ -257,6 +263,8 @@ module.exports = exports = (argv) ->
               deferred.resolve
                 id: id
                 ver: ver
+          else
+            deferred.reject(new Error("couldn't get data for some reason"))
             
       scopingHack(contentUrl, id)
 
