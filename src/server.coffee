@@ -6,6 +6,7 @@ module.exports = exports = (argv) ->
   #     npm install
   express     = require('express')
   path        = require('path')
+  url         = require('url')
   hbs         = require('hbs')
   fs          = require('fs') # Just to load jQuery
   Q           = require('q')  # Promises, promises
@@ -60,7 +61,7 @@ module.exports = exports = (argv) ->
   # For requests that need to be authenticated, add this into the pipe
   # by the owner, and returns 403 if someone else tries.
   authenticated = (req, res, next) ->
-    if req.isAuthenticated()
+    if req.isAuthenticated() or argv.debug
       next()
     else res.send('Access Forbidden', 403)
     #next()
@@ -165,10 +166,30 @@ module.exports = exports = (argv) ->
     originUrl = req.query.url
     task = new Task('Depositing content', originUrl)
     task.work 'Getting remote resource'
-    console.log 'Content:', req.query
     # promises will eventually be an array of id's pointing to content that has been imported
     idsPromise = []
     
+    class Context
+      goInto: (href) ->
+      getData: (callback) ->
+    
+    class UrlContext extends Context
+      constructor: (@task, @baseUrl) ->
+      goInto: (href) ->
+        new UrlContext(@task, url.resolve(@baseUrl, href))
+      getData: (callback) ->
+        remoteGet @baseUrl, task, callback
+    class PathContext extends Context
+      constructor: (@zipFile, @basePath) ->
+      goInto: (href) ->
+        new PathContext(@zipFile, path.normalize(path.join(@basePath, href)))
+      getData: (callback) ->
+        @zipFile.readFileAsync @basePath, (data) ->
+          callback(data?, data)
+    
+    # First, invert the query string so the dictionary is { depositURL -> repoId }
+    contentMap = {}
+    zipFile = null
     for id, urls of req.query
       # Either it's new content or it's a new version of existing content
       if id == 'url'
@@ -176,46 +197,40 @@ module.exports = exports = (argv) ->
           urls = [ urls ]
         # For each piece of new content deposit it and get back the id
         for originUrl in urls
-          f=() -> # Grr, stupid scoping of the deferred variable...
-            deferred = Q.defer()
-            idsPromise.push deferred.promise
-            remoteGet originUrl, task, (err, text, statusCode) -> 
-              if text
-                # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
-                task.work('Cleaning up the HTML')
-                cleanupHTML(text, task, (cleanHtml, links) ->
-                  id = newContent(req.user, cleanHtml)
-                  depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
-                  task.work 'Deposited! at ' + depositedUrl
-                  deferred.resolve
-                    id: id
-                    ver: 0
-                )
-              else
-                console.log("Error: derive failed because no HTML was received")
-                deferred.reject(new Error('derive failed because no HTML was received'))
-          f()
-
+          contentMap[originUrl] = id
+      else if id == 'body'
+        zipFile = new AdmZip(urls) # TODO: convert POST param to Buffer
       else
+        contentMap[urls] = id
+  
+    for contentUrl, id of contentMap
+      scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
+        contentUrl = url.parse(contentUrl)
+        if contentUrl.hostname
+          context = new UrlContext(task, contentUrl)
+        else if zipFile
+          context = new PathContext(zipFile, url.pathname)
+        else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
+
         deferred = Q.defer()
         idsPromise.push deferred.promise
-        # Check that the user has permissions to edit and then allow them
-        originUrl = urls
-        remoteGet originUrl, task, (err, text, statusCode) -> 
+        context.getData (err, text, statusCode) ->
           if text
             # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
             task.work('Cleaning up the HTML')
             cleanupHTML(text, task, (cleanHtml, links) ->
-              ver = updateContent(id, cleanHtml)
+              if id == 'url'
+                id = newContent(req.user, cleanHtml)
+                ver = 0
+              else
+                ver = updateContent(id, cleanHtml)
               depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
               task.work 'Deposited! at ' + depositedUrl
               deferred.resolve
                 id: id
                 ver: ver
             )
-          else
-            console.log("Error: derive failed because no HTML was received")
-            deferred.reject(new Error('derive failed because no HTML was received'))
+      scopingHack(contentUrl, id)
 
     task.wait("Trying to deposit #{idsPromise.length} URLs #{req.query}")
     Q.all(idsPromise)
