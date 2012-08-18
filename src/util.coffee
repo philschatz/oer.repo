@@ -12,30 +12,34 @@ module.exports.Task = class Task extends EventEmitter
     events.push @
     @id = events.length - 1
 
-  update: (message, status) ->
+  _update: (message, status) ->
     if @status == 'FINISHED' or @status == 'FAILED'
-      err = { event: @, message: 'This event already completed', newMessage: message, newStatus: status }
+      err = { event: @, message: "This event already completed with status #{@status} and message='#{message}'", newMessage: message, newStatus: status }
       console.log err
       throw err
     @message = message
     @modified = new Date()
     @status = status if status?
     @history.push(message)
-    console.log "Event: #{@message}"
+    console.log "Event(#{@id}): #{@status} #{@message}"
   
   work: (message, status = 'WORKING') ->
-    @update(message, status)
+    @_update(message, status)
+    @emit('work')
+
+  wait: (message, status = 'PAUSED') ->
+    @_update(message, status)
     @emit('work')
 
   fail: (error) ->
-    error = JSON.stringify(error) if not typeof error = 'string'
-    @update(error, 'FAILED')
-    @emit('end', 'FAILED')
+    #error = JSON.stringify(error) if not typeof error = 'string'
+    @_update(error, 'FAILED')
+    @emit('error', 'FAILED')
   
   finish: (message, url) ->
-    @update(message, 'FINISHED')
+    @_update(message, 'FINISHED')
     @url = url
-    @emit('end', 'FINISHED')
+    @emit('success', 'FINISHED')
 
 
 module.exports.cleanupHTML = cleanupHTML = (html, task, callback) ->
@@ -61,6 +65,8 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, callback) ->
       task.work 'Done cleaning'
       callback(doc.outerHTML, links)
     catch error
+      console.log 'cleanupHTML ERROR:'
+      console.log error
       task.fail error
   )
 
@@ -72,7 +78,7 @@ url = require('url')
 
 module.exports.remoteGet = remoteGet = (remoteUrl, task, cb) ->
   getopts = url.parse(remoteUrl)
-  task.work 'Requesting remote resource'
+  task.work "Requesting remote resource #{ remoteUrl }"
   task.url = remoteUrl
   
   protocol = if 'https:' == getopts.protocol then https else http
@@ -114,7 +120,9 @@ spawn = require('child_process').spawn
 module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
   task.work 'Getting remote resource for PDF'
   # Send the HTML to the PDF script
-  pdf = spawn(argv.pdfgen, [ '--no-network', '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ])
+  options =
+    env: process.env
+  pdf = spawn(argv.pdfgen, [ '--no-network', '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
   remoteGet originUrl, task, (err, text, statusCode) -> 
     if text
       task.work "Got data. Writing to prince #{text.length} chars"

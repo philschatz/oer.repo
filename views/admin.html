@@ -46,7 +46,7 @@
       .monitor,
       .login,
       .create, .update, 
-      .derive {
+      .deposit {
         float: left;
         margin: 0.5em;
         padding: 0.5em;
@@ -143,6 +143,24 @@ Aloha.settings.bundles = {
       </form>
     </div>
     
+    <div class="deposit">
+      <h2>Deposit new content from a URL</h2>
+      <form action="/deposit">
+        <span>URL: </span>
+        <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
+        <input type="button" name="submit" value="Deposit!"/>
+      </form>
+
+      <form action="/deposit">
+        <span>Or pick one: </span>
+        <select name="url">
+          <option value="http://cnx.org/content/m9003/latest/">cnx.org module m9003</option>
+          <option value="http://en.wikipedia.org/wiki/Campaign_finance_reform">Wikipedia Article on Campaign Finance</option>
+          <option value="https://docs.google.com/document/pub?id=1Cv5ozsGi5ukXTe8d_NlDExQg-o1lHvKuLH8RVJXqZRE">Published Google Doc (uses https)</option>
+        <input type="button" name="submit" value="Deposit!"/>
+      </form>
+    </div>
+
     <div class="update">
       <h2>Submit a new Version</h2>
       <form action="/content/" method="POST">
@@ -167,25 +185,6 @@ Aloha.settings.bundles = {
     </div>
 
 
-    <div class="derive">
-      <h2>Derive a new resource from a URL</h2>
-      <form action="/derive">
-        <span>URL: </span>
-        <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
-        <input type="button" name="submit" value="Derive!"/>
-      </form>
-
-      <form action="/derive">
-        <span>Or pick one: </span>
-        <select name="url">
-          <option value="http://cnx.org/content/m9003/latest/">cnx.org module m9003</option>
-          <option value="http://en.wikipedia.org/wiki/Campaign_finance_reform">Wikipedia Article on Campaign Finance</option>
-          <option value="https://docs.google.com/document/pub?id=1Cv5ozsGi5ukXTe8d_NlDExQg-o1lHvKuLH8RVJXqZRE">Published Google Doc (uses https)</option>
-        <input type="button" name="submit" value="Derive!"/>
-      </form>
-    </div>
-
-
     <div class="monitor"/>
 
     <script type="text/javascript">
@@ -200,7 +199,7 @@ $('form').each(function(id, form) {
   var $form = $(form);
   var action = $form.attr('action');
   var method = $form.attr('method');
-  var inputs = $form.find('input,textarea,select');
+  var inputs = $form.find('input:not([name=submit]),textarea,select');
   var submit = $form.find('input[name=submit]');
   
   if(!method) { method = 'GET'; }
@@ -253,9 +252,17 @@ tick = function() {
       $('<td>'+task.title+'</td>').appendTo(row);
       $('<td>'+task.message+'</td>').appendTo(row);
       if(task.url) {
-        // Remove the hostname
-        var url = task.url.replace(/https?:\/\/[a-z\.:0-9]+/, '');
-        $('<td><a href="' + url + '">' + url + '</a></td>').appendTo(row);
+        var td = $('<td></td>').appendTo(row);
+        var urls = task.url;
+        if (!(urls instanceof Array)) urls = [ urls ];
+        for (var i=0; i < urls.length; i++) {
+          // Remove the hostname
+          var url = urls[i].replace(/https?:\/\/[a-z\.:0-9]+/, '');
+          $('<a href="' + url + '">' + url + '</a>').appendTo(td);
+          if (i + 1 != urls.length) {
+            td.append(', ');
+          }
+        }
       } else {
         $('<td> - </td>').appendTo(row);
       }

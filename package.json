@@ -13,7 +13,8 @@
     "optimist": "~0.3",
     "jsdom": "~0.2",
     "passport": "~0.1.5",
-    "passport-openid": "~0.1.1"
+    "passport-openid": "~0.1.1",
+    "q": "~0.8.5"
   },
   "scripts": {
     "test": "./node_modules/mocha/bin/mocha"

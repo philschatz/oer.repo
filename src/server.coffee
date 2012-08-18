@@ -8,6 +8,7 @@ module.exports = exports = (argv) ->
   path        = require('path')
   hbs         = require('hbs')
   fs          = require('fs') # Just to load jQuery
+  Q           = require('q')  # Promises, promises
   # Authentication machinery
   passport    = new (require('passport')).Passport()
   OpenIDstrat = require('passport-openid').Strategy
@@ -62,6 +63,7 @@ module.exports = exports = (argv) ->
     if req.isAuthenticated()
       next()
     else res.send('Access Forbidden', 403)
+    #next()
 
   # Simplest possible way to serialize and deserialize a user. (to store in a session)
   passport.serializeUser( (user, done) ->
@@ -133,7 +135,7 @@ module.exports = exports = (argv) ->
   # Helper that issues a PDF gen request to the PDF "service"
   requestPdf = (resourceUrl) ->
     pdfTask = new Task('Requesting PDF', resourceUrl)
-    remoteGet "#{argv.u}/pdf/derive?url=#{resourceUrl}", pdfTask, (err, text, statusCode) ->
+    remoteGet "#{argv.u}/pdf/deposit?url=#{resourceUrl}", pdfTask, (err, text, statusCode) ->
       pdfTask.finish "PDF Request Sent!", text
   
   # The prefix for "published" content (ie "/content/1234")
@@ -146,36 +148,88 @@ module.exports = exports = (argv) ->
     task.work('Cleaning up the HTML')
     cleanupHTML(html, task, (cleanHtml, links) ->
       id = newContent(req.user, cleanHtml)
-      derivedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
-      task.finish 'Published!', derivedUrl
+      depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
+      task.finish 'Published!', depositedUrl
       #task.links = links # For debugging
       # Deriving a copy doesn't depend on generating a PDF
-      requestPdf(derivedUrl)
+      requestPdf(depositedUrl)
     )
     res.send "#{argv.u}/tasks/#{task.id}"
   )
 
-  # Derive a copy of an existing resource
+  # Deposit either a new piece of content or a new version of existing content
   # This can be any URL (for federation)
-  app.get('/derive', authenticated, (req, res) ->
+  # It can also be several URLs.
+  # Each query parameter is either an id (in which case it's an update) or "new" in which case it's new content
+  app.get('/deposit', authenticated, (req, res) ->
     originUrl = req.query.url
-    task = new Task('Deriving a copy', originUrl)
+    task = new Task('Depositing content', originUrl)
     task.work 'Getting remote resource'
-    remoteGet originUrl, task, (err, text, statusCode) -> 
-      if text
-        # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
-        task.work('Cleaning up the HTML')
-        cleanupHTML(text, task, (cleanHtml, links) ->
-          id = newContent(req.user, cleanHtml)
-          derivedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
-          task.finish 'Derived!', derivedUrl
-          #task.links = links # For debugging
-          # Deriving a copy doesn't depend on generating a PDF
-          requestPdf(derivedUrl)
-        )
+    console.log 'Content:', req.query
+    # promises will eventually be an array of id's pointing to content that has been imported
+    idsPromise = []
+    
+    for id, urls of req.query
+      # Either it's new content or it's a new version of existing content
+      if id == 'url'
+        if urls not instanceof Array
+          urls = [ urls ]
+        # For each piece of new content deposit it and get back the id
+        for originUrl in urls
+          f=() -> # Grr, stupid scoping of the deferred variable...
+            deferred = Q.defer()
+            idsPromise.push deferred.promise
+            remoteGet originUrl, task, (err, text, statusCode) -> 
+              if text
+                # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
+                task.work('Cleaning up the HTML')
+                cleanupHTML(text, task, (cleanHtml, links) ->
+                  id = newContent(req.user, cleanHtml)
+                  depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
+                  task.work 'Deposited! at ' + depositedUrl
+                  deferred.resolve
+                    id: id
+                    ver: 0
+                )
+              else
+                console.log("Error: derive failed because no HTML was received")
+                deferred.reject(new Error('derive failed because no HTML was received'))
+          f()
+
       else
-        console.log("Error: derive failed because no HTML was received")
-        task.fail err
+        deferred = Q.defer()
+        idsPromise.push deferred.promise
+        # Check that the user has permissions to edit and then allow them
+        originUrl = urls
+        remoteGet originUrl, task, (err, text, statusCode) -> 
+          if text
+            # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
+            task.work('Cleaning up the HTML')
+            cleanupHTML(text, task, (cleanHtml, links) ->
+              ver = updateContent(id, cleanHtml)
+              depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
+              task.work 'Deposited! at ' + depositedUrl
+              deferred.resolve
+                id: id
+                ver: ver
+            )
+          else
+            console.log("Error: derive failed because no HTML was received")
+            deferred.reject(new Error('derive failed because no HTML was received'))
+
+    task.wait("Trying to deposit #{idsPromise.length} URLs #{req.query}")
+    Q.all(idsPromise)
+    .then( (o) -> 
+      console.log 'Finished depositing. Got back:', o
+      urls = []
+      for content in o
+        depositedUrl = "#{argv.u}/#{ CONTENT }/#{content.id}@#{content.ver}"
+        urls.push(depositedUrl)
+        # Deriving a copy doesn't depend on generating a PDF
+        requestPdf(depositedUrl)
+        
+      task.finish 'All Deposited!', urls)
+    .fail (o) -> task.error 'Problem depositing some content'
     res.send "#{argv.u}/tasks/#{task.id}"
   )
 
@@ -231,7 +285,7 @@ module.exports = exports = (argv) ->
     res.send files[req.params.id]
   )
   
-  app.get('/pdf/derive', (req, res) ->
+  app.get('/pdf/deposit', (req, res) ->
     originUrl = req.query.url
     task = new Task('PDFGEN', originUrl)
     generatePDF argv, task, originUrl
