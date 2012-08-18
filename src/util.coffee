@@ -65,20 +65,18 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer) ->
       #  resourceRenamer $a.attr('href'), (err, newUrl) ->
       #    $a.attr('href', newUrl)
       $images = $('img[src]')
-      promises = $images.length
-      Q.fcall () ->
-        $images.each (i, a) ->
-          $el = $(@)
-          resourceRenamer $el.attr('src'), (err, newUrl) ->
-            $el.attr('src', newUrl)
-            # Icky hack. I need to make more things promises
-            promises--
-            if promises == 0
-              task.work "Done cleaning. 0 more images to go through"
-              deferred.resolve(doc.outerHTML)
-            else
-              task.work "Apparently more images to go through: #{promises}"
-      
+      promises = []
+      $images.each (i, a) ->
+        innerDeferred = Q.defer()
+        promises.push innerDeferred.promise
+        
+        $el = $(@)
+        resourceRenamer $el.attr('src'), (err, newUrl) ->
+          $el.attr('src', newUrl)
+          # Icky hack. I need to make more things promises
+          innerDeferred.resolve()
+      Q.all(promises).then () ->
+        deferred.resolve(doc.outerHTML)
     catch error
       console.log 'cleanupHTML ERROR:'
       console.log error
