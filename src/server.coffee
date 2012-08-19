@@ -144,7 +144,7 @@ module.exports = exports = (argv) ->
   requestPdf = (resourceUrl) ->
     pdfTask = new Task('Requesting PDF', resourceUrl)
     remoteGet "#{argv.u}/pdf/deposit?url=#{resourceUrl}", pdfTask, (err, text, statusCode) ->
-      pdfTask.finish "PDF Request Sent!", text
+      pdfTask.finish "PDF Request Sent!", text.toString()
   
   # The prefix for "published" content (ie "/content/1234")
   CONTENT = "content"

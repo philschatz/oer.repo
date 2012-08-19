@@ -268,10 +268,14 @@ tick = function() {
         if (!(urls instanceof Array)) urls = [ urls ];
         for (var i=0; i < urls.length; i++) {
           // Remove the hostname
-          var url = urls[i].replace(/https?:\/\/[a-z\.:0-9]+/, '');
-          $('<a href="' + url + '">' + url + '</a>').appendTo(td);
-          if (i + 1 != urls.length) {
-            td.append(', ');
+          if (urls[i].replace) {
+            var url = urls[i].replace(/https?:\/\/[a-z\.:0-9]+/, '');
+            $('<a href="' + url + '">' + url + '</a>').appendTo(td);
+            if (i + 1 != urls.length) {
+              td.append(', ');
+            }
+          } else {
+            td.append('BUG:no-url');
           }
         }
       } else {
