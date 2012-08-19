@@ -105,6 +105,8 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
 
         Q.all(promises)
         .then () ->
+          newHtml = doc.outerHTML
+          newHtml = newHtml.replace(/&nbsp;/g, '&#160;')
           deferred.resolve(doc.outerHTML)
         .end()
         task.work 'Done cleaning'
