@@ -68,10 +68,10 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer, linkRen
         
         $el = $(@)
         linkRenamer $el.attr('href'), (err, newHref) ->
-          task.work "Changing link from #{$el.attr('href')} to #{newHref}"
-          $el.attr('href', newHref)
-          # Icky hack. I need to make more things promises
-          innerDeferred.resolve()
+          if $el.attr('href') != newHref
+            task.work "Changing link from #{$el.attr('href')} to #{newHref}"
+            $el.attr('href', newHref)
+          innerDeferred.resolve(newHref)
 
       $('img[src]').each (i, a) ->
         innerDeferred = Q.defer()
@@ -79,9 +79,10 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer, linkRen
         
         $el = $(@)
         resourceRenamer $el.attr('src'), (err, newHref) ->
-          $el.attr('src', newHref)
-          # Icky hack. I need to make more things promises
-          innerDeferred.resolve()
+          if $el.attr('src') != newHref
+            task.work "Changing resource from #{$el.attr('src')} to #{newHref}"
+            $el.attr('src', newHref)
+          innerDeferred.resolve(newHref)
       Q.all(promises).then () ->
         deferred.resolve(doc.outerHTML)
       task.work 'Done cleaning'

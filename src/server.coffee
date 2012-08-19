@@ -166,19 +166,21 @@ module.exports = exports = (argv) ->
     
     class UrlContext extends Context
       constructor: (@task, @baseUrl) ->
+      getBase: () -> url.format(@baseUrl)
       goInto: (href) ->
         new UrlContext(@task, url.resolve(@baseUrl, href))
       getData: (callback) ->
         remoteGet @baseUrl, task, callback
     class PathContext extends Context
       constructor: (@task, @zipFile, @basePath) ->
+      getBase: () -> @basePath
       goInto: (href) ->
         # Local files in the zip can either point to other local files
         # or to remote files.
         if url.parse(href).hostname
           new UrlContext(@task, url.parse(href))
         else
-          new PathContext(@task, @zipFile, path.normalize(path.join(@basePath, href)))
+          new PathContext(@task, @zipFile, path.normalize(path.join(path.dirname(@basePath), href)))
       getData: (callback) ->
         entry = @zipFile.getEntry(@basePath) 
         console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
@@ -214,9 +216,9 @@ module.exports = exports = (argv) ->
       for entry in zipFile.getEntries()
         continue if entry.name[0] == '.' # Skip hidden files
         if HTML_FILE_NAME.test entry.name
-          task.work "No URLs specified, adding HTML file from Zip named #{entry.name}"
+          task.work "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
           id = newContentPromise()
-          contentMap[entry.name] = id
+          contentMap[entry.entryName] = id
     
     for contentUrl, id of contentMap
       scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
@@ -236,24 +238,33 @@ module.exports = exports = (argv) ->
         idsPromise.push deferred.promise
         # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
         linkRenamer = (href, callback) ->
-          # TODO: Support subdirs in the ZIP. newHref = context.goInto(href).basePath
-          newHref = href
-          if newHref of contentMap
-            newId = contentMap[newHref]
-            callback(false, "#{argv.u}/#{ CONTENT }/#{newId}")
-          else if url.parse(newHref).hostname
+          # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
+          [newHref, inPageId] = href.split('#')
+          if newHref == ''
+            # It's a local link. Don't change it.
             callback(false, href)
           else
-            callback(true)
+            newHref = context.goInto(newHref).getBase()
+            if newHref of contentMap
+              newId = contentMap[newHref]
+              newHref = "#{newId}"
+              newHref += '#' + inPageId if inPageId?
+              callback(false, newHref)
+            else if url.parse(newHref).hostname
+              callback(false, href)
+            else
+              callback(true)
 
         resourceRenamer = (href, callback) ->
           context.goInto(href).getData (err, content) ->
             if not err
               # "Import" the resource
-              rid = newResource(content, 'image/png', context.goInto(href).baseUrl)
+              rid = newResource(content, 'image/png', context.goInto(href).getBase())
+              callback(err, "#{argv.u}/resource/#{rid}")
             else
-              console.log "Error depositing resource because of status=#{status}"
-            callback(err, "#{argv.u}/resource/#{rid}")
+              console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
+              # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
+              callback(err, "Problem loading resource")
         
         context.getData (err, text, statusCode) ->
           if not err
