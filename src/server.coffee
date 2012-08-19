@@ -41,11 +41,10 @@ module.exports = exports = (argv) ->
   # best to supply sane defaults for any arguments that are missing.
   argv = require('./defaultargs')(argv)
   
-  newContent = (user, body) ->
+  newContentPromise = () ->
     id = content.length
     # Wrapped in array because it's version 0
     content.push []
-    updateContent id, body, [ user ]
     id
   updateContent = (id, body, users=null) ->
     resource = content[id]
@@ -150,27 +149,12 @@ module.exports = exports = (argv) ->
   # The prefix for "published" content (ie "/content/1234")
   CONTENT = "content"
   
-  # Create a new resource from scratch
-  app.post('/create', authenticated, (req, res) ->
-    html = req.body.body
-    task = new Task('Creating new Content')
-    task.work('Cleaning up the HTML')
-    resourceRenamer = (href, callback) -> callback(null)
-    promise = cleanupHTML(html, task, resourceRenamer, (cleanHtml) ->
-      id = newContent(req.user, cleanHtml)
-      depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@0"
-      task.finish 'Published!', depositedUrl
-      # Deriving a copy doesn't depend on generating a PDF
-      requestPdf(depositedUrl)
-    )
-    res.send "#{argv.u}/tasks/#{task.id}"
-  )
-
   # Deposit either a new piece of content or a new version of existing content
   # This can be any URL (for federation)
   # It can also be several URLs.
   # Each query parameter is either an id (in which case it's an update) or "new" in which case it's new content
   app.post('/deposit', authenticated, (req, res, next) ->
+    HTML_FILE_NAME = /\.x?html?$/
     task = new Task('Depositing content')
     task.work 'Getting remote resource'
     # promises will eventually be an array of id's pointing to content that has been imported
@@ -210,16 +194,29 @@ module.exports = exports = (argv) ->
       task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
       zipFile = new AdmZip(req.files.body.path)
 
-    for id, urls of req.body
-      # Either it's new content or it's a new version of existing content
-      if id == 'url'
-        if urls not instanceof Array
-          urls = [ urls ]
-        # For each piece of new content deposit it and get back the id
-        for originUrl in urls
-          contentMap[originUrl] = id
-      else
-        contentMap[urls] = id
+    if req.body
+      for id, urls of req.body
+        # Either it's new content or it's a new version of existing content
+        if id == 'url'
+          if urls # Could just be the zip file
+            if urls not instanceof Array
+              urls = [ urls ]
+            # For each piece of new content deposit it and get back the id
+            for originUrl in urls
+              # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+              id = newContentPromise()
+              contentMap[originUrl] = id
+        else
+          contentMap[urls] = id
+    
+    # If they are uploading a zip and did not explicitly specify any html files, add them all
+    if zipFile? and (not req.body or not (req.body and req.body['url']))
+      for entry in zipFile.getEntries()
+        continue if entry.name[0] == '.' # Skip hidden files
+        if HTML_FILE_NAME.test entry.name
+          task.work "No URLs specified, adding HTML file from Zip named #{entry.name}"
+          id = newContentPromise()
+          contentMap[entry.name] = id
     
     for contentUrl, id of contentMap
       scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
@@ -238,6 +235,17 @@ module.exports = exports = (argv) ->
         deferred = Q.defer()
         idsPromise.push deferred.promise
         # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
+        linkRenamer = (href, callback) ->
+          # TODO: Support subdirs in the ZIP. newHref = context.goInto(href).basePath
+          newHref = href
+          if newHref of contentMap
+            newId = contentMap[newHref]
+            callback(false, "#{argv.u}/#{ CONTENT }/#{newId}")
+          else if url.parse(newHref).hostname
+            callback(false, href)
+          else
+            callback(true)
+
         resourceRenamer = (href, callback) ->
           context.goInto(href).getData (err, content) ->
             if not err
@@ -251,13 +259,12 @@ module.exports = exports = (argv) ->
           if not err
             # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
             task.work('Cleaning up the HTML')
-            promise = cleanupHTML(text, task, resourceRenamer)
+            promise = cleanupHTML(text, task, resourceRenamer, linkRenamer)
             promise.then (cleanHtml) ->
-              if id == 'url'
-                id = newContent(req.user, cleanHtml)
-                ver = 0
-              else
-                ver = updateContent(id, cleanHtml)
+              task.work 'Cleaned up HTML.'
+              task.work "updateContent id=#{id} user=#{req.user}"
+              ver = updateContent(id, cleanHtml, [ req.user ])
+              task.work 'Updated Content.'
               depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
               task.work 'Deposited! at ' + depositedUrl
               deferred.resolve

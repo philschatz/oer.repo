@@ -43,7 +43,7 @@ module.exports.Task = class Task extends EventEmitter
     @emit('success', 'FINISHED')
 
 
-module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer) ->
+module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer, linkRenamer) ->
   deferred = Q.defer()
   task.work 'Cleaning up HTML. Parsing...'
   doc = jsdom.jsdom(html, null, 
@@ -54,29 +54,37 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer) ->
   window = doc.createWindow()
   jsdom.jQueryify(window, (window, $) ->
     try
+      task.work 'Starting clean'
       $ = window.jQuery
       $('script').remove()
       # $('head').remove() # TODO: look up attribution here
       $('*[style]').removeAttr('style')
       
       task.work 'Cleaning up links'
-      #$('a[href]').each (i, a) ->
-      #  $a = $(@)
-      #  resourceRenamer $a.attr('href'), (err, newUrl) ->
-      #    $a.attr('href', newUrl)
-      $images = $('img[src]')
       promises = []
-      $images.each (i, a) ->
+      $('a[href]').each (i, a) ->
         innerDeferred = Q.defer()
         promises.push innerDeferred.promise
         
         $el = $(@)
-        resourceRenamer $el.attr('src'), (err, newUrl) ->
-          $el.attr('src', newUrl)
+        linkRenamer $el.attr('href'), (err, newHref) ->
+          task.work "Changing link from #{$el.attr('href')} to #{newHref}"
+          $el.attr('href', newHref)
+          # Icky hack. I need to make more things promises
+          innerDeferred.resolve()
+
+      $('img[src]').each (i, a) ->
+        innerDeferred = Q.defer()
+        promises.push innerDeferred.promise
+        
+        $el = $(@)
+        resourceRenamer $el.attr('src'), (err, newHref) ->
+          $el.attr('src', newHref)
           # Icky hack. I need to make more things promises
           innerDeferred.resolve()
       Q.all(promises).then () ->
         deferred.resolve(doc.outerHTML)
+      task.work 'Done cleaning'
     catch error
       console.log 'cleanupHTML ERROR:'
       console.log error
@@ -92,7 +100,7 @@ url = require('url')
 
 module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   getopts = url.parse(remoteUrl)
-  task.work "Requesting remote resource #{ remoteUrl }"
+  task.work "Requesting remote resource #{ url.format(remoteUrl) }"
   task.url = remoteUrl
   
   protocol = if 'https:' == getopts.protocol then https else http
@@ -104,7 +112,7 @@ module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
     resp.on('data', (chunk) ->
       responsedata.push(chunk)
       responseLen += chunk.length
-      task.work "Getting Data from #{remoteUrl} (#{chunk.length})"
+      task.work "Getting Data from #{url.format(remoteUrl)} (#{chunk.length})"
     )
     resp.on('error', (e) ->
       task.fail e
