@@ -161,7 +161,7 @@ module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
   # Send the HTML to the PDF script
   options =
     env: process.env
-  pdf = spawn(argv.pdfgen, [ '--no-network', '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
+  pdf = spawn(argv.pdfgen, [ '--input=auto', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
   remoteGet originUrl, task, (err, text, statusCode) -> 
     if text
       task.work "Got data. Writing to prince #{text.length} chars"
@@ -172,14 +172,21 @@ module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
       task.fail err
       pdf.exit()
 
-  pdfContent = ''
+  pdfChunks = []
+  pdfChunksLen = 0
   pdf.stdout.on 'data', (data) ->
-    pdfContent += data
+    pdfChunks.push data
+    pdfChunksLen += data.length
   pdf.stderr.on 'data', (data) ->
     task.work "Warning: #{data}"
   
   pdf.on 'exit', (code) ->
     if 0 == code
+      pdfContent = new Buffer(pdfChunksLen)
+      pos = 0
+      for chunk in pdfChunks
+        chunk.copy(pdfContent, pos)
+        pos += chunk.length
       id = newResource(pdfContent, 'application/pdf')
       fileUrl = "#{argv.u}/resource/#{id}"
       task.finish 'PDF Done!', fileUrl
