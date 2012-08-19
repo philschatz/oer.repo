@@ -204,7 +204,7 @@ module.exports = exports = (argv) ->
         # First, invert the query string so the dictionary is { depositURL -> repoId }
         contentMap = {}
         zipFile = null
-        if req.files and req.files.body
+        if req.files and req.files.body and req.files.body.size
           task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
           zipFile = new AdmZip(req.files.body.path)
     
