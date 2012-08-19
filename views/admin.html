@@ -134,9 +134,9 @@ Aloha.settings.bundles = {
 
     <div class="create">
       <h2>Create new Content</h2>
-      <form action="/create" method="POST">
+      <form action="/deposit" method="POST">
         <p>Resource body (the HTML):</p>
-        <textarea name="body">
+        <textarea name="url">
 &lt;html&gt;
   &lt;body&gt;
     &lt;p&gt;Hello there! I really like
@@ -169,28 +169,15 @@ Aloha.settings.bundles = {
       </form>
     </div>
 
-    <div class="deposit">
-      <h2>Multiple Deposits with a Zip</h2>
-      <form action="/deposit" method="POST" enctype="multipart/form-data">
-        <span>URL 1:</span> <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/> (*)
-        <br/><span>URL 2:</span> <input name="url" value="index.html" style="width: 20em;"/> (*)
-        <br/><span>Zip File:</span> <input name="body" type="file"/>
-        <br/><input type="submit" value="Deposit!"/>
-        <br/><span>* This can be an absolute URL or a relative href into the Zip file.
-        <br/>Leave both empty to publish all HTML files in the uploaded Zip file (think EPUB)</span>
-      </form>
-
-    </div>
-
     <div class="update">
       <h2>Submit a new Version</h2>
-      <form action="/content/" method="POST">
+      <form action="/deposit" method="POST">
         <div class="id">
           <span>Resource id of published resource (just a number):</span>
-          <input name="_id" value="0" size="3em" />
+          <input class="dynamic-name" value="0" size="3em" />
         </div>
         <p>Resource body (the HTML):</p>
-        <textarea name="body">
+        <textarea class="dynamic-value">
 &lt;html&gt;
   &lt;body&gt;
     &lt;p&gt;Hello there! I really like
@@ -205,6 +192,20 @@ Aloha.settings.bundles = {
       </form>
     </div>
 
+    <div class="deposit">
+      <h2>Multiple Deposits with a Zip</h2>
+      <form action="/deposit" method="POST" enctype="multipart/form-data">
+        <span>URL 1:</span> <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/> (*)
+        <br/><span>URL 2:</span> <input name="url" value="index.html" style="width: 20em;"/> (*)
+        <br/><span>Update URL:</span> <input class="dynamic-name" value="url" style="width: 5em;"/> = <input class="dynamic-value" style="width: 20em;"/> (**)
+        <br/><span>Zip File:</span> <input name="archive" type="file"/>
+        <br/><input type="submit" value="Deposit!"/>
+        <br/><span>* This can be an absolute URL or a relative href into the Zip file.
+        <br/>Leave both empty to publish all HTML files in the uploaded Zip file (think EPUB)</span>
+        <br/><span>** The 1st box is used either for updating or for adding. The 1st box is either the id or "url" (for new content)
+        <br/>The second box can be either: A URL to pull from, a href into the zip, or the raw HTML</span>
+      </form>
+    </div>
 
     <div class="monitor"/>
 
@@ -216,6 +217,14 @@ Aloha.settings.bundles = {
 var monitor = $('.monitor');
 
 //Make the forms AJAXy
+$('form input.dynamic-name'). each(function(id, input) {
+  var $input = $(input);
+  $input.on('change', function() {
+    var id = $(this).val();
+    $input.parents('form').find('.dynamic-value').attr('name', id);
+  })
+});
+
 $('form:not(enctype=multipart/form-data)').each(function(id, form) {
   var $form = $(form);
   var action = $form.attr('action');
@@ -233,12 +242,9 @@ $('form:not(enctype=multipart/form-data)').each(function(id, form) {
         params[$input.attr('name')] = $input.val();
       }
     });
-    var action2 = action;
-    if($form.find('input[name=_id]').length > 0) {
-      action2 += $form.find('input[name=_id]').val();
-    }
+
     
-    $.ajax(action2, {
+    $.ajax(action, {
       type: method,
       data: params,
       success: function(text, status) {
