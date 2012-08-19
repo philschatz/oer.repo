@@ -164,10 +164,12 @@ Aloha.settings.bundles = {
     <div class="deposit">
       <h2>Multiple Deposits with a Zip</h2>
       <form action="/deposit" method="POST" enctype="multipart/form-data">
-        <span>URL 1:</span> <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/><sup title="This can be an absolute URL or a relative href into the Zip file">(*)</sup>
-        <br/><span>URL 2:</span> <input name="url" value="index.html" style="width: 20em;"/><sup title="This can be an absolute URL or a relative href into the Zip file">(*)</sup>
+        <span>URL 1:</span> <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/> (*)
+        <br/><span>URL 2:</span> <input name="url" value="index.html" style="width: 20em;"/> (*)
         <br/><span>Zip File:</span> <input name="body" type="file"/>
         <br/><input type="submit" value="Deposit!"/>
+        <br/><span>* This can be an absolute URL or a relative href into the Zip file.
+        <br/>Leave both empty to publish all HTML files in the uploaded Zip file (think EPUB)</span>
       </form>
 
     </div>
