@@ -199,7 +199,7 @@ module.exports = exports = (argv) ->
         else
           callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
     
-    Q.delay(100)
+    Q.delay(10)
     .then () ->    
         # First, invert the query string so the dictionary is { depositURL -> repoId }
         contentMap = {}
@@ -299,7 +299,7 @@ module.exports = exports = (argv) ->
           scopingHack(contentUrl, id)
     
         task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
-        Q.delay(100).all(idsPromise)
+        Q.all(idsPromise)
         .then( (o) -> 
           urls = []
           for content in o

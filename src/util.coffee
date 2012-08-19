@@ -99,7 +99,7 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
               $el.attr('href', newHref)
             innerDeferred.resolve(newHref)
 
-        Q.delay(100).all(promises).then () ->
+        Q.all(promises).then () ->
           deferred.resolve(doc.outerHTML)
         task.work 'Done cleaning'
       catch error
