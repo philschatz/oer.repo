@@ -39,9 +39,9 @@ module.exports.Task = class Task extends EventEmitter
     @_update(error, 'FAILED')
     @emit('error', 'FAILED')
   
-  finish: (message, url) ->
+  finish: (message, successUrl) ->
     @_update(message, 'FINISHED')
-    @url = url
+    @url = successUrl
     @emit('success', 'FINISHED')
 
 
@@ -121,7 +121,6 @@ url = require('url')
 module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   getopts = url.parse(remoteUrl)
   task.work "Requesting remote resource #{ url.format(remoteUrl) }"
-  task.url = remoteUrl
   
   protocol = if 'https:' == getopts.protocol then https else http
   # TODO: This needs more robust error handling, just trying to
