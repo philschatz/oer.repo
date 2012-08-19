@@ -54,7 +54,8 @@
         box-shadow: 10px 11px 44px rgba(0, 0, 0, 0.35), inset 0px 0px 1px rgba(255, 255, 255, 0.15);
       }
       
-      .PENDING   { background-color: #66f; }
+      th        { color: #666; }
+      .PENDING  { background-color: #66f; }
       .WORKING  { }
       .PAUSED   { background-color: #ccc; }
       .FINISHED { color: #ccc; }
@@ -162,7 +163,7 @@ Aloha.settings.bundles = {
         <span>Or pick one: </span>
         <select name="url">
           <option value="http://cnx.org/content/m9003/latest/">cnx.org module m9003</option>
-          <option value="http://en.wikipedia.org/wiki/Campaign_finance_reform">Wikipedia Article on Campaign Finance</option>
+          <option value="http://cnx.org/">Connexions Home Page</option>
           <option value="https://docs.google.com/document/pub?id=1Cv5ozsGi5ukXTe8d_NlDExQg-o1lHvKuLH8RVJXqZRE">Published Google Doc (uses https)</option>
         <input type="button" name="submit" value="Deposit!"/>
       </form>
@@ -309,7 +310,12 @@ tick = function() {
       
       $('<td><abbr title="' + task.modified + '">'+spent+'</abbr></td>').appendTo(row);
       
-      var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified', 'history'];
+      var td = $('<td></td>').appendTo(row);
+      if (task.origin) {
+        $('<a href="' + task.origin + '">' + task.origin + '</a>').appendTo(td);
+      }
+
+      var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified', 'history', 'origin'];
       for(var i in remove) {
         var key = remove[i];
         if(key in task) {
@@ -324,9 +330,10 @@ tick = function() {
         json += task[key];
         json += '", ';
       }
-      json += '}';      
+      json += '}';
+      
+      if (json != '{}') td.append(' ' + json);
 
-      $('<td>' + json + '</td>').appendTo(row);
         
       id++;
     }
