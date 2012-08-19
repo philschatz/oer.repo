@@ -219,9 +219,12 @@ var monitor = $('.monitor');
 //Make the forms AJAXy
 $('form input.dynamic-name'). each(function(id, input) {
   var $input = $(input);
+  // Set the name on load and then whenever it changes, 
+  $input.parents('form').find('.dynamic-value').attr('name', $input.val());
+
   $input.on('change', function() {
-    var id = $(this).val();
-    $input.parents('form').find('.dynamic-value').attr('name', id);
+    var $input = $(this);
+    $input.parents('form').find('.dynamic-value').attr('name', $input.val());
   })
 });
 
