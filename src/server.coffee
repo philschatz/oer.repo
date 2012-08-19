@@ -182,12 +182,22 @@ module.exports = exports = (argv) ->
         else
           new PathContext(@task, @zipFile, path.normalize(path.join(path.dirname(@basePath), href)))
       getData: (callback) ->
-        entry = @zipFile.getEntry(@basePath) 
-        console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
-        data = entry.getData() if entry
-        callback(not entry?, data)
-        #@zipFile.readFileAsync @basePath, (data) ->
-        #  callback(data?, data)
+        entry = @zipFile.getEntry(@basePath)
+        if entry
+          # Try to get the data asynchronously since it uses native zlib
+          # But if we get a bad CRC the async code throws an exception instead of returning the partial data
+          # So, in that case, get the data synchronously (something is better than nothing?)
+          
+          # The next lines are commented because I apparently can't catch Errors
+          #try
+          #  entry.getDataAsync (data) ->
+          #    callback(not data, data)
+          #catch error
+            console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
+            data = entry.getData()
+            callback(not data, data)
+        else
+          callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
     
     # First, invert the query string so the dictionary is { depositURL -> repoId }
     contentMap = {}
