@@ -161,6 +161,7 @@ module.exports = exports = (argv) ->
     idsPromise = []
     
     class Context
+      getBase: () ->
       goInto: (href) ->
       getData: (callback) ->
     
@@ -171,6 +172,15 @@ module.exports = exports = (argv) ->
         new UrlContext(@task, url.resolve(@baseUrl, href))
       getData: (callback) ->
         remoteGet @baseUrl, task, callback
+
+    class SingleFileContext extends Context
+      constructor: (@task, @htmlText) ->
+      getBase: () -> '.'
+      goInto: (href) ->
+        new UrlContext(@task, url.parse(href))
+      getData: (callback) ->
+        callback(null, @htmlText)
+
     class PathContext extends Context
       constructor: (@task, @zipFile, @basePath) ->
       getBase: () -> @basePath
@@ -204,9 +214,9 @@ module.exports = exports = (argv) ->
         # First, invert the query string so the dictionary is { depositURL -> repoId }
         contentMap = {}
         zipFile = null
-        if req.files and req.files.body and req.files.body.size
-          task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
-          zipFile = new AdmZip(req.files.body.path)
+        if req.files and req.files.archive and req.files.archive.size
+          task.work "Received file named #{req.files.archive.name} with size #{req.files.archive.size}"
+          zipFile = new AdmZip(req.files.archive.path)
     
         if req.body
           for id, urls of req.body
@@ -235,16 +245,18 @@ module.exports = exports = (argv) ->
         for contentUrl, id of contentMap
           contentTask = new Task('Importing/Cleaning')
           scopingHack=(task, contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
-            contentUrl = url.parse(contentUrl)
-            if contentUrl.hostname
+            href = url.parse(contentUrl)
+            if contentUrl[0] == '<'
+              context = new SingleFileContext(task, contentUrl)
+            else if href.hostname
               # TODO: Split off the text after the last slash
-              context = new UrlContext(task, contentUrl)
+              context = new UrlContext(task, href)
             else if zipFile
               # Verify the file exists in the zip
-              if not zipFile.getEntry(contentUrl.pathname)
-                throw new Error("Uploaded zip file does not contain a file named #{contentUrl.pathname}")
+              if not zipFile.getEntry(href.pathname)
+                throw new Error("Uploaded zip file does not contain a file named #{href.pathname}")
               # TODO: Split off the text after the last slash
-              context = new PathContext(task, zipFile, contentUrl.pathname)
+              context = new PathContext(task, zipFile, href.pathname)
             else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
     
             deferred = Q.defer()
