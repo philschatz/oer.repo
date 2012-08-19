@@ -96,6 +96,7 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
     )
   else
     task.work "WARNING: Couldn't generate window.document.body for this HTML. Ignoring for now"
+    deferred.resolve "<html><body>ERROR: This HTML file could not be parsed for some reason.</body></html>"
   deferred.promise
 
 
