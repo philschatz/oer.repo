@@ -199,115 +199,117 @@ module.exports = exports = (argv) ->
         else
           callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
     
-    # First, invert the query string so the dictionary is { depositURL -> repoId }
-    contentMap = {}
-    zipFile = null
-    if req.files and req.files.body
-      task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
-      zipFile = new AdmZip(req.files.body.path)
-
-    if req.body
-      for id, urls of req.body
-        # Either it's new content or it's a new version of existing content
-        if id == 'url'
-          if urls # Could just be the zip file
-            if urls not instanceof Array
-              urls = [ urls ]
-            # For each piece of new content deposit it and get back the id
-            for originUrl in urls
-              # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+    Q.delay(10)
+    .then () ->    
+        # First, invert the query string so the dictionary is { depositURL -> repoId }
+        contentMap = {}
+        zipFile = null
+        if req.files and req.files.body
+          task.work "Received file named #{req.files.body.name} with size #{req.files.body.size}"
+          zipFile = new AdmZip(req.files.body.path)
+    
+        if req.body
+          for id, urls of req.body
+            # Either it's new content or it's a new version of existing content
+            if id == 'url'
+              if urls # Could just be the zip file
+                if urls not instanceof Array
+                  urls = [ urls ]
+                # For each piece of new content deposit it and get back the id
+                for originUrl in urls
+                  # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+                  id = newContentPromise()
+                  contentMap[originUrl] = id
+            else
+              contentMap[urls] = id
+        
+        # If they are uploading a zip and did not explicitly specify any html files, add them all
+        if zipFile? and (not req.body or not (req.body and req.body['url']))
+          for entry in zipFile.getEntries()
+            continue if entry.name[0] == '.' # Skip hidden files
+            if HTML_FILE_NAME.test entry.name
+              task.work "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
               id = newContentPromise()
-              contentMap[originUrl] = id
-        else
-          contentMap[urls] = id
-    
-    # If they are uploading a zip and did not explicitly specify any html files, add them all
-    if zipFile? and (not req.body or not (req.body and req.body['url']))
-      for entry in zipFile.getEntries()
-        continue if entry.name[0] == '.' # Skip hidden files
-        if HTML_FILE_NAME.test entry.name
-          task.work "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
-          id = newContentPromise()
-          contentMap[entry.entryName] = id
-    
-    for contentUrl, id of contentMap
-      scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
-        contentUrl = url.parse(contentUrl)
-        if contentUrl.hostname
-          # TODO: Split off the text after the last slash
-          context = new UrlContext(task, contentUrl)
-        else if zipFile
-          # Verify the file exists in the zip
-          if not zipFile.getEntry(contentUrl.pathname)
-            throw new Error("Uploaded zip file does not contain a file named #{contentUrl.pathname}")
-          # TODO: Split off the text after the last slash
-          context = new PathContext(task, zipFile, contentUrl.pathname)
-        else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
-
-        deferred = Q.defer()
-        idsPromise.push deferred.promise
-        # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
-        linkRenamer = (href, callback) ->
-          # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
-          [newHref, inPageId] = href.split('#')
-          if newHref == ''
-            # It's a local link. Don't change it.
-            callback(false, href)
-          else
-            newHref = context.goInto(newHref).getBase()
-            if newHref of contentMap
-              newId = contentMap[newHref]
-              newHref = "#{newId}"
-              newHref += '#' + inPageId if inPageId?
-              callback(false, newHref)
-            else if url.parse(newHref).hostname
-              callback(false, href)
-            else
-              callback(true)
-
-        resourceRenamer = (href, contentType, callback) ->
-          context.goInto(href).getData (err, content) ->
-            if not err
-              # "Import" the resource
-              rid = newResource(content, contentType, context.goInto(href).getBase())
-              callback(err, "#{argv.u}/resource/#{rid}")
-            else
-              console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
-              # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
-              callback(err, "Problem loading resource")
+              contentMap[entry.entryName] = id
         
-        context.getData (err, text, statusCode) ->
-          if not err
-            # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
-            task.work('Cleaning up the HTML')
-            promise = cleanupHTML(argv, text, task, resourceRenamer, linkRenamer)
-            promise.then (cleanHtml) ->
-              task.work 'Cleaned up HTML.'
-              task.work "updateContent id=#{id} user=#{req.user}"
-              ver = updateContent(id, cleanHtml, [ req.user ])
-              task.work 'Updated Content.'
-              depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
-              task.work 'Deposited! at ' + depositedUrl
-              deferred.resolve
-                id: id
-                ver: ver
-          else
-            deferred.reject(new Error("couldn't get data for some reason"))
+        for contentUrl, id of contentMap
+          scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
+            contentUrl = url.parse(contentUrl)
+            if contentUrl.hostname
+              # TODO: Split off the text after the last slash
+              context = new UrlContext(task, contentUrl)
+            else if zipFile
+              # Verify the file exists in the zip
+              if not zipFile.getEntry(contentUrl.pathname)
+                throw new Error("Uploaded zip file does not contain a file named #{contentUrl.pathname}")
+              # TODO: Split off the text after the last slash
+              context = new PathContext(task, zipFile, contentUrl.pathname)
+            else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
+    
+            deferred = Q.defer()
+            idsPromise.push deferred.promise
+            # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
+            linkRenamer = (href, callback) ->
+              # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
+              [newHref, inPageId] = href.split('#')
+              if newHref == ''
+                # It's a local link. Don't change it.
+                callback(false, href)
+              else
+                newHref = context.goInto(newHref).getBase()
+                if newHref of contentMap
+                  newId = contentMap[newHref]
+                  newHref = "#{newId}"
+                  newHref += '#' + inPageId if inPageId?
+                  callback(false, newHref)
+                else if url.parse(newHref).hostname
+                  callback(false, href)
+                else
+                  callback(true)
+    
+            resourceRenamer = (href, contentType, callback) ->
+              context.goInto(href).getData (err, content) ->
+                if not err
+                  # "Import" the resource
+                  rid = newResource(content, contentType, context.goInto(href).getBase())
+                  callback(err, "#{argv.u}/resource/#{rid}")
+                else
+                  console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
+                  # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
+                  callback(err, "Problem loading resource")
             
-      scopingHack(contentUrl, id)
-
-    task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
-    Q.all(idsPromise)
-    .then( (o) -> 
-      urls = []
-      for content in o
-        depositedUrl = "#{argv.u}/#{ CONTENT }/#{content.id}@#{content.ver}"
-        urls.push(depositedUrl)
-        # Deriving a copy doesn't depend on generating a PDF
-        requestPdf(depositedUrl)
-        
-      task.finish 'All Deposited!', urls)
-    .fail (o) -> task.error 'Problem depositing some content'
+            context.getData (err, text, statusCode) ->
+              if not err
+                # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
+                task.work('Cleaning up the HTML')
+                promise = cleanupHTML(argv, text, task, resourceRenamer, linkRenamer)
+                promise.then (cleanHtml) ->
+                  task.work 'Cleaned up HTML.'
+                  task.work "updateContent id=#{id} user=#{req.user}"
+                  ver = updateContent(id, cleanHtml, [ req.user ])
+                  task.work 'Updated Content.'
+                  depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
+                  task.work 'Deposited! at ' + depositedUrl
+                  deferred.resolve
+                    id: id
+                    ver: ver
+              else
+                deferred.reject(new Error("couldn't get data for some reason"))
+                
+          scopingHack(contentUrl, id)
+    
+        task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
+        Q.all(idsPromise)
+        .then( (o) -> 
+          urls = []
+          for content in o
+            depositedUrl = "#{argv.u}/#{ CONTENT }/#{content.id}@#{content.ver}"
+            urls.push(depositedUrl)
+            # Deriving a copy doesn't depend on generating a PDF
+            requestPdf(depositedUrl)
+            
+          task.finish 'All Deposited!', urls)
+        .fail (o) -> task.error 'Problem depositing some content'
     res.send "#{argv.u}/tasks/#{task.id}"
 
   )
