@@ -30,13 +30,18 @@ argv = optimist
   )
   .options('r',
     alias     : 'root'
-    default   : path.join(__dirname, '..', '..')
+    default   : path.join(__dirname)
     describe  : 'Application root folder'
   )
   .options('g',
     alias     : 'pdfgen'
     default   : ''
     describe  : 'Binary that converts a HTML+CSS file into a PDF'
+  )
+  .options('x',
+    alias     : 'debug-user'
+    boolean   : true
+    describe  : 'Set this flag if you do not want to have to authenticate'
   )
   .options('test',
     boolean   : true

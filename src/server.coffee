@@ -68,7 +68,7 @@ module.exports = exports = (argv) ->
   # For requests that need to be authenticated, add this into the pipe
   # by the owner, and returns 403 if someone else tries.
   authenticated = (req, res, next) ->
-    if req.isAuthenticated() or argv.debug
+    if req.isAuthenticated() or argv.x
       next()
     else res.send('Access Forbidden', 403)
     #next()
