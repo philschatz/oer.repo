@@ -187,7 +187,7 @@ module.exports = exports = (argv) ->
       goInto: (href) ->
         # Local files in the zip can either point to other local files
         # or to remote files.
-        if url.parse(href).hostname
+        if url.parse(href).protocol
           new UrlContext(@task, url.parse(href))
         else
           new PathContext(@task, @zipFile, path.normalize(path.join(path.dirname(@basePath), href)))
@@ -234,13 +234,19 @@ module.exports = exports = (argv) ->
               contentMap[urls] = id
         
         # If they are uploading a zip and did not explicitly specify any html files, add them all
-        if zipFile? and (not req.body or not (req.body and req.body['url']))
-          for entry in zipFile.getEntries()
-            continue if entry.name[0] == '.' # Skip hidden files
-            if HTML_FILE_NAME.test entry.name
-              task.work "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
-              id = newContentPromise()
-              contentMap[entry.entryName] = id
+        if zipFile?
+          # Check if any of the files to deposit are local (not an absolute URL and not raw HTML)
+          foundLocalHref = false
+          for href of contentMap
+            if href[0] != '<' and not url.parse(href).protocol
+              foundLocalHref = true
+          if not foundLocalHref
+            for entry in zipFile.getEntries()
+              continue if entry.name[0] == '.' # Skip hidden files
+              if HTML_FILE_NAME.test entry.name
+                task.work "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
+                id = newContentPromise()
+                contentMap[entry.entryName] = id
         
         for contentUrl, id of contentMap
           contentTask = new Task('Importing/Cleaning')
@@ -248,7 +254,7 @@ module.exports = exports = (argv) ->
             href = url.parse(contentUrl)
             if contentUrl[0] == '<'
               context = new SingleFileContext(task, contentUrl)
-            else if href.hostname
+            else if href.protocol
               # TODO: Split off the text after the last slash
               context = new UrlContext(task, href)
             else if zipFile
@@ -276,7 +282,7 @@ module.exports = exports = (argv) ->
                   newHref = "#{newId}"
                   newHref += '#' + inPageId if inPageId?
                   callback(false, newHref)
-                else if url.parse(newHref).hostname
+                else if url.parse(newHref).protocol
                   callback(false, href)
                 else
                   callback(true)
