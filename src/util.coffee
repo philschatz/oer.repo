@@ -22,6 +22,8 @@ module.exports.Task = class Task extends EventEmitter
     @modified = new Date()
     @status = status
     @history.push(message)
+    if @history.length > 50
+      @history.splice(0,1)
     console.log "Event(#{@id}): #{@status} #{@message}"
   
   work: (message, status = 'WORKING') ->
@@ -52,45 +54,48 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
       ProcessExternalResources: false
   )
   window = doc.createWindow()
-  jsdom.jQueryify(window, "#{argv.u}/jquery-latest.js", (window, $) ->
-    try
-      task.work 'Starting clean'
-      $ = window.jQuery
-      $('script').remove()
-      # $('head').remove() # TODO: look up attribution here
-      $('*[style]').removeAttr('style')
-      
-      task.work 'Cleaning up links'
-      promises = []
-      $('a[href]').each (i, a) ->
-        innerDeferred = Q.defer()
-        promises.push innerDeferred.promise
+  if window.document and window.document.documentElement and window.document.body
+    jsdom.jQueryify(window, "#{argv.u}/jquery-latest.js", (window, $) ->
+      try
+        task.work 'Starting clean'
+        $ = window.jQuery
+        $('script').remove()
+        # $('head').remove() # TODO: look up attribution here
+        $('*[style]').removeAttr('style')
         
-        $el = $(@)
-        linkRenamer $el.attr('href'), (err, newHref) ->
-          if $el.attr('href') != newHref
-            task.work "Changing link from #{$el.attr('href')} to #{newHref}"
-            $el.attr('href', newHref)
-          innerDeferred.resolve(newHref)
-
-      $('img[src]').each (i, a) ->
-        innerDeferred = Q.defer()
-        promises.push innerDeferred.promise
-        
-        $el = $(@)
-        resourceRenamer $el.attr('src'), (err, newHref) ->
-          if $el.attr('src') != newHref
-            task.work "Changing resource from #{$el.attr('src')} to #{newHref}"
-            $el.attr('src', newHref)
-          innerDeferred.resolve(newHref)
-      Q.all(promises).then () ->
-        deferred.resolve(doc.outerHTML)
-      task.work 'Done cleaning'
-    catch error
-      console.log 'cleanupHTML ERROR:'
-      console.log error
-      task.fail error
-  )
+        task.work 'Cleaning up links'
+        promises = []
+        $('a[href]').each (i, a) ->
+          innerDeferred = Q.defer()
+          promises.push innerDeferred.promise
+          
+          $el = $(@)
+          linkRenamer $el.attr('href'), (err, newHref) ->
+            if $el.attr('href') != newHref
+              task.work "Changing link from #{$el.attr('href')} to #{newHref}"
+              $el.attr('href', newHref)
+            innerDeferred.resolve(newHref)
+  
+        $('img[src]').each (i, a) ->
+          innerDeferred = Q.defer()
+          promises.push innerDeferred.promise
+          
+          $el = $(@)
+          resourceRenamer $el.attr('src'), (err, newHref) ->
+            if $el.attr('src') != newHref
+              task.work "Changing resource from #{$el.attr('src')} to #{newHref}"
+              $el.attr('src', newHref)
+            innerDeferred.resolve(newHref)
+        Q.all(promises).then () ->
+          deferred.resolve(doc.outerHTML)
+        task.work 'Done cleaning'
+      catch error
+        console.log 'cleanupHTML ERROR:'
+        console.log error
+        task.fail error
+    )
+  else
+    task.work "WARNING: Couldn't generate window.document.body for this HTML. Ignoring for now"
   deferred.promise
 
 
