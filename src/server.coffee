@@ -212,12 +212,12 @@ module.exports = exports = (argv) ->
           for id, urls of req.body
             # Either it's new content or it's a new version of existing content
             if id == 'url'
-              if urls # Could just be the zip file
-                if urls not instanceof Array
-                  urls = [ urls ]
-                # For each piece of new content deposit it and get back the id
-                for originUrl in urls
-                  # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+              if urls not instanceof Array
+                urls = [ urls ]
+              # For each piece of new content deposit it and get back the id
+              for originUrl in urls
+                # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+                if originUrl # Each of these URL's could be the empty string. If so, ignore it
                   id = newContentPromise()
                   contentMap[originUrl] = id
             else
@@ -248,6 +248,7 @@ module.exports = exports = (argv) ->
     
             deferred = Q.defer()
             idsPromise.push deferred.promise
+            
             # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
             linkRenamer = (href, callback) ->
               # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
@@ -278,7 +279,8 @@ module.exports = exports = (argv) ->
                   # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
                   callback(err, "Problem loading resource")
             
-            context.getData (err, text, statusCode) ->
+            f = () ->
+             context.getData (err, text, statusCode) ->
               if not err
                 # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
                 task.work('Cleaning up the HTML')
@@ -295,7 +297,7 @@ module.exports = exports = (argv) ->
                     ver: ver
               else
                 deferred.reject(new Error("couldn't get data for some reason"))
-                
+            setTimeout f, 100    
           scopingHack(contentUrl, id)
     
         task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
