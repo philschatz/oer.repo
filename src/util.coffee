@@ -81,11 +81,24 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
           promises.push innerDeferred.promise
           
           $el = $(@)
-          resourceRenamer $el.attr('src'), (err, newHref) ->
+          resourceRenamer $el.attr('src'), 'image/jpeg', (err, newHref) ->
             if $el.attr('src') != newHref
               task.work "Changing resource from #{$el.attr('src')} to #{newHref}"
               $el.attr('src', newHref)
             innerDeferred.resolve(newHref)
+
+        # For giggles also include CSS files
+        $('link[rel=stylesheet]').each (i, a) ->
+          innerDeferred = Q.defer()
+          promises.push innerDeferred.promise
+          
+          $el = $(@)
+          resourceRenamer $el.attr('href'), 'text/css', (err, newHref) ->
+            if $el.attr('href') != newHref
+              task.work "Changing resource from #{$el.attr('href')} to #{newHref}"
+              $el.attr('href', newHref)
+            innerDeferred.resolve(newHref)
+
         Q.all(promises).then () ->
           deferred.resolve(doc.outerHTML)
         task.work 'Done cleaning'

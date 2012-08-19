@@ -265,11 +265,11 @@ module.exports = exports = (argv) ->
             else
               callback(true)
 
-        resourceRenamer = (href, callback) ->
+        resourceRenamer = (href, contentType, callback) ->
           context.goInto(href).getData (err, content) ->
             if not err
               # "Import" the resource
-              rid = newResource(content, 'image/png', context.goInto(href).getBase())
+              rid = newResource(content, contentType, context.goInto(href).getBase())
               callback(err, "#{argv.u}/resource/#{rid}")
             else
               console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
