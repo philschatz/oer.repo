@@ -272,7 +272,7 @@ module.exports = exports = (argv) ->
                 if not err
                   # "Import" the resource
                   rid = newResource(content, contentType, context.goInto(href).getBase())
-                  callback(err, "#{argv.u}/resource/#{rid}")
+                  callback(err, "/resource/#{rid}")
                 else
                   console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
                   # TODO: Fail at this point, but since test-ccap has missing images let it slide ...

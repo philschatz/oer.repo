@@ -174,7 +174,7 @@ module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
   # Send the HTML to the PDF script
   options =
     env: process.env
-  pdf = spawn(argv.pdfgen, [ '--input=auto', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
+  pdf = spawn(argv.pdfgen, [ "--baseurl=#{argv.u}/content/", '--input=auto', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
   remoteGet originUrl, task, (err, text, statusCode) -> 
     if text
       task.work "Got data. Writing to prince #{text.length} chars"
