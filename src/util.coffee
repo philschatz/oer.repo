@@ -43,7 +43,7 @@ module.exports.Task = class Task extends EventEmitter
     @emit('success', 'FINISHED')
 
 
-module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer, linkRenamer) ->
+module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer) ->
   deferred = Q.defer()
   task.work 'Cleaning up HTML. Parsing...'
   doc = jsdom.jsdom(html, null, 
@@ -52,7 +52,7 @@ module.exports.cleanupHTML = cleanupHTML = (html, task, resourceRenamer, linkRen
       ProcessExternalResources: false
   )
   window = doc.createWindow()
-  jsdom.jQueryify(window, (window, $) ->
+  jsdom.jQueryify(window, "#{argv.u}/jquery-latest.js", (window, $) ->
     try
       task.work 'Starting clean'
       $ = window.jQuery

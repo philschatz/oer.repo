@@ -270,7 +270,7 @@ module.exports = exports = (argv) ->
           if not err
             # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
             task.work('Cleaning up the HTML')
-            promise = cleanupHTML(text, task, resourceRenamer, linkRenamer)
+            promise = cleanupHTML(argv, text, task, resourceRenamer, linkRenamer)
             promise.then (cleanHtml) ->
               task.work 'Cleaned up HTML.'
               task.work "updateContent id=#{id} user=#{req.user}"
@@ -327,7 +327,7 @@ module.exports = exports = (argv) ->
       html = req.body.body
       task = new Task('Committing new version')
       resourceRenamer = (href, callback) -> callback(null)
-      cleanupHTML(html, task, resourceRenamer, (cleanedHTML) ->
+      cleanupHTML(argv, html, task, resourceRenamer, (cleanedHTML) ->
         ver = updateContent(req.params.id, cleanedHTML) # Don't send a set of new users
         newUrl = "#{argv.u}/#{ CONTENT }/#{req.params.id}@#{ver}"
         requestPdf(newUrl)
