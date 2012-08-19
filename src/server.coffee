@@ -233,7 +233,8 @@ module.exports = exports = (argv) ->
               contentMap[entry.entryName] = id
         
         for contentUrl, id of contentMap
-          scopingHack=(contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
+          contentTask = new Task('Importing/Cleaning')
+          scopingHack=(task, contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
             contentUrl = url.parse(contentUrl)
             if contentUrl.hostname
               # TODO: Split off the text after the last slash
@@ -279,8 +280,7 @@ module.exports = exports = (argv) ->
                   # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
                   callback(err, "Problem loading resource")
             
-            f = () ->
-             context.getData (err, text, statusCode) ->
+            context.getData (err, text, statusCode) ->
               if not err
                 # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
                 task.work('Cleaning up the HTML')
@@ -291,16 +291,17 @@ module.exports = exports = (argv) ->
                   ver = updateContent(id, cleanHtml, [ req.user ])
                   task.work 'Updated Content.'
                   depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
-                  task.work 'Deposited! at ' + depositedUrl
+                  task.finish 'Published!', depositedUrl
                   deferred.resolve
                     id: id
                     ver: ver
               else
                 deferred.reject(new Error("couldn't get data for some reason"))
-            setTimeout f, 100    
-          scopingHack(contentUrl, id)
+                
+          scopingHack(contentTask, contentUrl, id)
     
-        task.wait("Trying to deposit #{idsPromise.length} URLs #{JSON.stringify(contentMap)}")
+        task.work("Set of URLs to published id's: #{JSON.stringify(contentMap)}")
+        task.wait("Trying to deposit #{idsPromise.length} URLs")
         Q.all(idsPromise)
         .then( (o) -> 
           urls = []

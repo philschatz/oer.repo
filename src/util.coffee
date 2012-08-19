@@ -37,7 +37,7 @@ module.exports.Task = class Task extends EventEmitter
   fail: (error) ->
     #error = JSON.stringify(error) if not typeof error = 'string'
     @_update(error, 'FAILED')
-    @emit('error', 'FAILED')
+    #@emit('error', 'FAILED')
   
   finish: (message, successUrl) ->
     @_update(message, 'FINISHED')
@@ -99,8 +99,14 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
               $el.attr('href', newHref)
             innerDeferred.resolve(newHref)
 
-        Q.all(promises).then () ->
+        # Remove the base tag
+        $('head > base[href]').each (i, a) ->
+          $(@).remove()
+
+        Q.all(promises)
+        .then () ->
           deferred.resolve(doc.outerHTML)
+        .end()
         task.work 'Done cleaning'
       catch error
         console.log 'cleanupHTML ERROR:'

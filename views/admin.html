@@ -54,6 +54,13 @@
         box-shadow: 10px 11px 44px rgba(0, 0, 0, 0.35), inset 0px 0px 1px rgba(255, 255, 255, 0.15);
       }
       
+      .PENDING   { background-color: #66f; }
+      .WORKING  { }
+      .PAUSED   { background-color: #ccc; }
+      .FINISHED { color: #ccc; }
+      .FINISHED td:first-child { background-color: #cc6; }
+      .FAILED   { background-color: #c66; }
+      
     </style>
 
 <script type="text/javascript">
@@ -252,7 +259,7 @@ $('form:not(enctype=multipart/form-data)').each(function(id, form) {
 tick = function() {
   $.getJSON('/tasks', function(data, textStatus) {
     monitor.children().detach();
-    var table = $('<table><caption>Events</caption><tr><th>id</th><th>Status</th><th>Title</th><th>Message</th><th>Success URL</th><th>Created</th><th>Took</th><th>additional</th></tr></table>').appendTo(monitor);
+    var table = $('<table><caption>Events</caption><tr><th>id</th><th>Title</th><th>Message</th><th>Success URL</th><th>Created</th><th>Took</th><th>additional</th></tr></table>').appendTo(monitor);
 
     // Print in reverse
     data = data.reverse();
@@ -260,8 +267,10 @@ tick = function() {
       var task = data[id];
       
       var row = $('<tr/>').appendTo(table);
+      
+      row.addClass(task.status);
+      
       $('<td><a href="/tasks/'+task.id+'">'+task.id+'</a></td>').appendTo(row);
-      $('<td>'+task.status+'</td>').appendTo(row);
       $('<td>'+task.title+'</td>').appendTo(row);
       $('<td>'+task.message+'</td>').appendTo(row);
       if(task.url) {
@@ -290,7 +299,7 @@ tick = function() {
       var modified = new Date(task.modified);
       var diff = modified.getTime() - start.getTime();
       var minutes = Math.floor(diff / (1000 * 60));
-      var seconds = (diff / 1000) % 60;
+      var seconds = Math.floor(diff / 1000) % 60;
       
       var spent = ''
       if(minutes > 0) {
