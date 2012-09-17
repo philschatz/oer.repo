@@ -267,10 +267,10 @@ module.exports = exports = (argv) ->
             else if zipFile
               # Verify the file exists in the zip
               if not zipFile.getEntry(href.pathname)
-                throw new Error("Uploaded zip file does not contain a file named #{href.pathname}")
+                task.fail "Uploaded zip file does not contain a file named #{href.pathname}"
               # TODO: Split off the text after the last slash
               context = new PathContext(task, zipFile, href.pathname)
-            else throw new Error('Specified href to content without providing a zip payload or a hostname to pull from')
+            else task.fail 'Specified href to content without providing a zip payload or a hostname to pull from'
     
             deferred = Q.defer()
             idsPromise.push deferred.promise
