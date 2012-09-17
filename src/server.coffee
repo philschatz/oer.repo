@@ -337,7 +337,16 @@ module.exports = exports = (argv) ->
 
   # For debugging
   app.get("/#{ CONTENT }/", (req, res) ->
-    res.send content.length
+    # Build up a little map of all the promises (tasks)
+    tasks = []
+    for c in content
+      promise = c[c.length-1].body
+      tasks.push
+        history:  promise.history
+        created:  promise.created
+        modified: promise.modified
+        status:   promise.status
+    res.send tasks
   )
 
   app.get("/#{ CONTENT }/:id([0-9]+)(@:ver([0-9]+))?", (req, res) ->

@@ -267,41 +267,22 @@ $('form:not(enctype=multipart/form-data)').each(function(id, form) {
 });
 
 tick = function() {
-  $.getJSON('/tasks', function(data, textStatus) {
+  $.getJSON('/content/', function(data, textStatus) {
     monitor.children().detach();
-    var table = $('<table><caption>Events</caption><tr><th>id</th><th>Title</th><th>Message</th><th>Success URL</th><th>Created</th><th>Took</th><th>additional</th></tr></table>').appendTo(monitor);
+    var table = $('<table><caption>Tasks</caption><tr><th>URL</th><th>Message</th><th>Created</th><th>Took</th><th>additional</th></tr></table>').appendTo(monitor);
 
     // Print in reverse
     data = data.reverse();
-    for(var id in data) {
-      var task = data[id];
+    for(var index in data) {
+      var task = data[index];
       
       var row = $('<tr/>').appendTo(table);
       
       row.addClass(task.status);
       
-      $('<td><a href="/tasks/'+task.id+'">'+task.id+'</a></td>').appendTo(row);
-      $('<td>'+task.title+'</td>').appendTo(row);
-      $('<td>'+task.message+'</td>').appendTo(row);
-      if(task.url) {
-        var td = $('<td></td>').appendTo(row);
-        var urls = task.url;
-        if (!(urls instanceof Array)) urls = [ urls ];
-        for (var i=0; i < urls.length; i++) {
-          // Remove the hostname
-          if (urls[i].replace) {
-            var url = urls[i].replace(/https?:\/\/[a-z\.:0-9]+/, '');
-            $('<a href="' + url + '">' + url + '</a>').appendTo(td);
-            if (i + 1 != urls.length) {
-              td.append(', ');
-            }
-          } else {
-            td.append('BUG:no-url');
-          }
-        }
-      } else {
-        $('<td> - </td>').appendTo(row);
-      }
+      var id = data.length - parseInt(index) - 1;
+      $('<td><a href="/content/'+id+'">'+id+'</a></td>').appendTo(row);
+      $('<td>'+task.history[task.history.length-1]+'</td>').appendTo(row);
       $('<td>'+task.created+'</td>').appendTo(row);
       
       // Calculate how long it has taken so far
@@ -319,11 +300,6 @@ tick = function() {
       
       $('<td><abbr title="' + task.modified + '">'+spent+'</abbr></td>').appendTo(row);
       
-      var td = $('<td></td>').appendTo(row);
-      if (task.origin) {
-        $('<a href="' + task.origin + '">' + task.origin + '</a>').appendTo(td);
-      }
-
       var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified', 'history', 'origin', 'data'];
       for(var i in remove) {
         var key = remove[i];
