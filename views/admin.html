@@ -136,7 +136,7 @@ Aloha.settings.bundles = {
       <h2>Create new Content</h2>
       <form action="/deposit" method="POST">
         <p>Resource body (the HTML):</p>
-        <textarea name="url">
+        <textarea name="new">
 &lt;html&gt;
   &lt;body&gt;
     &lt;p&gt;Hello there! I really like
@@ -155,13 +155,13 @@ Aloha.settings.bundles = {
       <h2>Deposit new content from a URL</h2>
       <form action="/deposit" method="POST">
         <span>URL: </span>
-        <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
+        <input name="new" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
         <input type="button" name="submit" value="Deposit!"/>
       </form>
 
       <form action="/deposit" method="POST">
         <span>Or pick one: </span>
-        <select name="url">
+        <select name="new">
           <option value="http://cnx.org/content/m9003/latest/">cnx.org module m9003</option>
           <option value="http://cnx.org/">Connexions Home Page</option>
           <option value="https://docs.google.com/document/pub?id=1Cv5ozsGi5ukXTe8d_NlDExQg-o1lHvKuLH8RVJXqZRE">Published Google Doc (uses https)</option>
@@ -195,14 +195,14 @@ Aloha.settings.bundles = {
     <div class="deposit">
       <h2>Multiple Deposits with a Zip</h2>
       <form action="/deposit" method="POST" enctype="multipart/form-data">
-        <span>URL 1:</span> <input name="url" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/> (*)
-        <br/><span>URL 2:</span> <input name="url" value="index.html" style="width: 20em;"/> (*)
-        <br/><span>Update URL:</span> <input class="dynamic-name" value="url" style="width: 5em;"/> = <input class="dynamic-value" style="width: 20em;"/> (**)
+        <span>URL 1:</span> <input name="new" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/> (*)
+        <br/><span>URL 2:</span> <input name="new" value="index.html" style="width: 20em;"/> (*)
+        <br/><span>Update URL:</span> <input class="dynamic-name" value="new" style="width: 5em;"/> = <input class="dynamic-value" style="width: 20em;"/> (**)
         <br/><span>Zip File:</span> <input name="archive" type="file"/>
         <br/><input type="submit" value="Deposit!"/>
         <br/><span>* This can be an absolute URL or a relative href into the Zip file.
         <br/>Leave both empty to publish all HTML files in the uploaded Zip file (think EPUB)</span>
-        <br/><span>** The 1st box is used either for updating or for adding. The 1st box is either the id or "url" (for new content)
+        <br/><span>** The 1st box is used either for updating or for adding. The 1st box is either the id or "new" (for new content)
         <br/>The second box can be either: A URL to pull from, a href into the zip, or the raw HTML</span>
       </form>
     </div>
@@ -324,7 +324,7 @@ tick = function() {
         $('<a href="' + task.origin + '">' + task.origin + '</a>').appendTo(td);
       }
 
-      var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified', 'history', 'origin'];
+      var remove = ['id', 'status', 'title', 'url', 'message', 'created', 'modified', 'history', 'origin', 'data'];
       for(var i in remove) {
         var key = remove[i];
         if(key in task) {

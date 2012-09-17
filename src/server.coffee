@@ -16,7 +16,7 @@ module.exports = exports = (argv) ->
   OpenIDstrat = require('passport-openid').Strategy
 
   # Local util objects/functions
-  Task        = require('./util').Task
+  Promise     = require('./util').Promise
   newResource = require('./util').newResource
   cleanupHTML = require('./util').cleanupHTML
   remoteGet   = require('./util').remoteGet
@@ -41,23 +41,24 @@ module.exports = exports = (argv) ->
   # best to supply sane defaults for any arguments that are missing.
   argv = require('./defaultargs')(argv)
   
-  newContentPromise = () ->
+  newContent = (promise) ->
     id = content.length
     # Wrapped in array because it's version 0
-    content.push []
+    content.push [ {users: null, body: promise} ]
     id
-  updateContent = (id, body, users=null) ->
-    resource = content[id]
-    ver = resource.length
+  newContentVersion = (id, promise, users=null) ->
+    versions = content[id]
+    ver = versions.length
     newVer =
       users: users
-      body: body
+      body: promise
     # If updating content and not changing the set of allowed users
     # Just use the previous set of users
     if not users
-      newVer.users = resource[ver - 1].users
-    resource.push newVer
+      newVer.users = versions[ver - 1].users
+    versions.push newVer
     ver
+    
   # Checks if a given user can modify a given piece of content
   canChangeContent = (id, user) ->
     resource = content[id]
@@ -142,7 +143,9 @@ module.exports = exports = (argv) ->
 
   # Helper that issues a PDF gen request to the PDF "service"
   requestPdf = (resourceUrl) ->
-    pdfTask = new Task('Requesting PDF', resourceUrl)
+    pdfTask = new Promise()
+    pdfTask.work 'Requesting PDF'
+    pdfTask.originUrl = resourceUrl
     remoteGet "#{argv.u}/pdf/deposit?url=#{resourceUrl}", pdfTask, (err, text, statusCode) ->
       pdfTask.finish "PDF Request Sent!", text.toString()
   
@@ -155,8 +158,6 @@ module.exports = exports = (argv) ->
   # Each query parameter is either an id (in which case it's an update) or "new" in which case it's new content
   app.post('/deposit', authenticated, (req, res, next) ->
     HTML_FILE_NAME = /\.x?html?$/
-    task = new Task('Depositing content')
-    task.work 'Getting remote resource'
     # promises will eventually be an array of id's pointing to content that has been imported
     idsPromise = []
     
@@ -171,7 +172,7 @@ module.exports = exports = (argv) ->
       goInto: (href) ->
         new UrlContext(@task, url.resolve(@baseUrl, href))
       getData: (callback) ->
-        remoteGet @baseUrl, task, callback
+        remoteGet @baseUrl, @task, callback
 
     class SingleFileContext extends Context
       constructor: (@task, @htmlText) ->
@@ -209,47 +210,53 @@ module.exports = exports = (argv) ->
         else
           callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
     
-    Q.delay(10)
-    .then () ->    
-        # First, invert the query string so the dictionary is { depositURL -> repoId }
-        contentMap = {}
-        zipFile = null
-        if req.files and req.files.archive and req.files.archive.size
-          task.work "Received file named #{req.files.archive.name} with size #{req.files.archive.size}"
-          zipFile = new AdmZip(req.files.archive.path)
+    # First, invert the query string so the dictionary is { depositURL -> repoId }
+    contentMap = {}
+    zipFile = null
+    if req.files and req.files.archive and req.files.archive.size
+      console.log "Received file named #{req.files.archive.name} with size #{req.files.archive.size}"
+      zipFile = new AdmZip(req.files.archive.path)
+
+    if req.body
+      for id, urls of req.body
+        # Either it's new content or it's a new version of existing content
+        if id == 'new'
+          if urls not instanceof Array
+            urls = [ urls ]
+          # For each piece of new content deposit it and get back the id
+          for originUrl in urls
+            # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+            if originUrl # Each of these URL's could be the empty string. If so, ignore it
+              promise = new Promise()
+              id = newContent(promise)
+              contentMap[originUrl] = { id: id, ver: 0, promise: promise }
+        else
+          promise = new Promise()
+          ver = newContentVersion(id, promise)
+          contentMap[urls] = { id: id, ver: ver, promise: promise }
     
-        if req.body
-          for id, urls of req.body
-            # Either it's new content or it's a new version of existing content
-            if id == 'url'
-              if urls not instanceof Array
-                urls = [ urls ]
-              # For each piece of new content deposit it and get back the id
-              for originUrl in urls
-                # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
-                if originUrl # Each of these URL's could be the empty string. If so, ignore it
-                  id = newContentPromise()
-                  contentMap[originUrl] = id
-            else
-              contentMap[urls] = id
+    # If they are uploading a zip and did not explicitly specify any html files, add them all
+    if zipFile?
+      # Check if any of the files to deposit are local (not an absolute URL and not raw HTML)
+      foundLocalHref = false
+      for href of contentMap
+        if href[0] != '<' and not url.parse(href).protocol
+          foundLocalHref = true
+      if not foundLocalHref
+        for entry in zipFile.getEntries()
+          continue if entry.name[0] == '.' # Skip hidden files
+          if HTML_FILE_NAME.test entry.name
+            console.log "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
+            promise = new Promise()
+            id = newContent(promise)
+            contentMap[entry.entryName] = { id: id, ver: 0, promise: promise }
         
-        # If they are uploading a zip and did not explicitly specify any html files, add them all
-        if zipFile?
-          # Check if any of the files to deposit are local (not an absolute URL and not raw HTML)
-          foundLocalHref = false
-          for href of contentMap
-            if href[0] != '<' and not url.parse(href).protocol
-              foundLocalHref = true
-          if not foundLocalHref
-            for entry in zipFile.getEntries()
-              continue if entry.name[0] == '.' # Skip hidden files
-              if HTML_FILE_NAME.test entry.name
-                task.work "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
-                id = newContentPromise()
-                contentMap[entry.entryName] = id
-        
-        for contentUrl, id of contentMap
-          contentTask = new Task('Importing/Cleaning')
+    doTheDeposit = () ->    
+        for contentUrl, obj of contentMap
+          id = obj.id
+          contentTask = obj.promise
+
+          contentTask.work 'Importing/Cleaning'
           scopingHack=(task, contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
             href = url.parse(contentUrl)
             if contentUrl[0] == '<'
@@ -278,7 +285,7 @@ module.exports = exports = (argv) ->
               else
                 newHref = context.goInto(newHref).getBase()
                 if newHref of contentMap
-                  newId = contentMap[newHref]
+                  newId = contentMap[newHref].id
                   newHref = "#{newId}"
                   newHref += '#' + inPageId if inPageId?
                   callback(false, newHref)
@@ -306,45 +313,48 @@ module.exports = exports = (argv) ->
                 promise.then (cleanHtml) ->
                   task.work 'Cleaned up HTML.'
                   task.work "updateContent id=#{id} user=#{req.user}"
-                  ver = updateContent(id, cleanHtml, [ req.user ])
-                  task.work 'Updated Content.'
-                  depositedUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
-                  task.finish 'Published!', depositedUrl
-                  deferred.resolve
-                    id: id
-                    ver: ver
+                  task.finish cleanHtml
               else
-                deferred.reject(new Error("couldn't get data for some reason"))
+                task.fail("couldn't get data for some reason")
                 
           scopingHack(contentTask, contentUrl, id)
     
-        task.work("Set of URLs to published id's: #{JSON.stringify(contentMap)}")
-        task.wait("Trying to deposit #{idsPromise.length} URLs")
-        Q.all(idsPromise)
-        .then( (o) -> 
-          urls = []
-          for content in o
-            depositedUrl = "#{argv.u}/#{ CONTENT }/#{content.id}@#{content.ver}"
-            urls.push(depositedUrl)
-            # Deriving a copy doesn't depend on generating a PDF
-            requestPdf(depositedUrl)
-            
-          task.finish 'All Deposited!', urls)
-        .fail (o) -> task.error 'Problem depositing some content'
-    res.send "#{argv.u}/tasks/#{task.id}"
-
+        urls = []
+        for id, obj of contentMap
+          depositedUrl = "#{argv.u}/#{ CONTENT }/#{obj.id}@#{obj.ver}"
+          urls.push(depositedUrl)
+          # Deriving a copy doesn't depend on generating a PDF
+          requestPdf(depositedUrl)
+    
+    setTimeout(doTheDeposit, 10)
+    
+    # Return a mapping of uploaded URL/hrefs to content URLs
+    ret = {}
+    for href, obj of contentMap
+      ret[href] = "/#{ CONTENT }/#{obj.id}@#{obj.ver}"
+    res.send JSON.stringify(ret)
   )
 
   # For debugging
   app.get("/#{ CONTENT }/", (req, res) ->
-    res.send content
+    res.send content.length
   )
 
   app.get("/#{ CONTENT }/:id([0-9]+)(@:ver([0-9]+))?", (req, res) ->
-    ver = req.param('ver', "@#{content[req.params.id].length - 1}")
+    id = req.params.id
+    ver = req.param('ver', "@#{content[id].length - 1}")
     ver = ver[1..ver.length] # split off the '@' character
-    res.send content[req.params.id][ver].body
+    body = content[id][ver].body # .body is a Promise
+    body.send(res)
   )
+  app.get("/#{ CONTENT }/:id([0-9]+)(@:ver([0-9]+))?.json", (req, res) ->
+    id = req.params.id
+    ver = req.param('ver', "@#{content[id].length - 1}")
+    ver = ver[1..ver.length] # split off the '@' character
+    body = content[id][ver].body # .body is a Promise
+    res.send(body)
+  )
+
 
   app.get('/tasks/:id([0-9]+)?', (req, res) ->
     if req.params.id
@@ -356,17 +366,19 @@ module.exports = exports = (argv) ->
   ##### Post routes #####
 
   app.post("/#{ CONTENT }/:id([0-9]+)", authenticated, (req, res) ->
-    if canChangeContent req.params.id, req.user
+    id = req.params.id
+    if canChangeContent id, req.user
       html = req.body.body
-      task = new Task('Committing new version')
+      task = new Promise()
+      task.work 'Committing new version'
+      ver = newContentVersion(id, promise)
       resourceRenamer = (href, callback) -> callback(null)
       cleanupHTML(argv, html, task, resourceRenamer, (cleanedHTML) ->
-        ver = updateContent(req.params.id, cleanedHTML) # Don't send a set of new users
-        newUrl = "#{argv.u}/#{ CONTENT }/#{req.params.id}@#{ver}"
+        promise.finish(cleanedHTML) # Don't send a set of new users
+        newUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
         requestPdf(newUrl)
-        task.finish 'Content updated!', newUrl
       )
-      res.send "#{argv.u}/tasks/#{task.id}"
+      res.send "/#{ CONTENT }/#{id}@#{ver}"
     else
       # User is not allowed to make changes
       res.send 403
@@ -383,14 +395,18 @@ module.exports = exports = (argv) ->
   
   app.get('/resource/:id([0-9]+)', (req, res) ->
     # Set the mimetype for the resource
-    resource = resources[req.params.id]
+    id = req.params.id
+    console.log "Getting resource id=" + id
+    resource = resources[id]
     res.contentType resource.contentType
     res.send resource.content
   )
   
   app.get('/pdf/deposit', (req, res) ->
     originUrl = req.query.url
-    task = new Task('PDFGEN', originUrl)
+    task = new Promise()
+    task.work 'PDFGEN'
+    task.origin = originUrl
     generatePDF argv, task, originUrl
     res.send "#{argv.u}/tasks/#{task.id}"
   )

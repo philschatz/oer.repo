@@ -4,45 +4,62 @@ Q = require('q') # Promises, Promises
 
 module.exports.resources = resources = []
 module.exports.events = events = []
-module.exports.Task = class Task extends EventEmitter
-  constructor: (@title, @origin) ->
-    @history = [] # Stores all the changes made to the event
-    @status = 'PENDING'
-    @created = @modified = new Date()
-    # Push it into the array so admin can keep track of it
-    events.push @
-    @id = events.length - 1
 
-  _update: (message, status) ->
+module.exports.Promise = class Promise extends EventEmitter
+  constructor: (prerequisite) ->
+    events.push @
+    @status = 'PENDING'
+    @created = new Date()
+    @history = []
+    @isProcessing = true
+    @data = null
+    if prerequisite?
+      that = @
+      prerequisite.on 'update', (msg) -> that.update "Prerequisite update: #{msg}"
+      prerequisite.on 'fail', () ->
+        that.update 'Prerequisite task failed'
+        that.fail()
+      prerequisite.on 'finish', (_, mimeType) -> that.update "Prerequisite finished generating object with mime-type=#{mimeType}"
+  # Send either the data (if available), or a HTTP Status with this JSON
+  send: (res) ->
+    if @isProcessing
+      res.status(202).send @
+    else if @data
+      res.header('Content-Type', @mimeType)
+      res.send @data
+    else
+      res.status(404).send @
+  update: (msg) ->
     if @status == 'FINISHED' or @status == 'FAILED'
-      err = { event: @, message: "This event already completed with status #{@status} and message='#{@message}'", newMessage: message, newStatus: status }
+      message = @history[@history.length-1]
+      err = { event: @, message: "This event already completed with status #{@status} and message='#{message}'", newMessage: msg }
       console.log err
       throw err
-    @message = message
     @modified = new Date()
-    @status = status
-    @history.push(message)
+    @history.push msg
     if @history.length > 50
       @history.splice(0,1)
-    console.log "Event(#{@id}): #{@status} #{@message}"
-  
-  work: (message, status = 'WORKING') ->
-    @_update(message, status)
+    @emit('update', msg)
+
+  work: (message, @status='WORKING') ->
+    @update(message)
+    @emit('work')
+  wait: (message, @status='PAUSED') ->
+    @update(message)
     @emit('work')
 
-  wait: (message, status = 'PAUSED') ->
-    @_update(message, status)
-    @emit('work')
+  fail: (msg) ->
+    @update msg
+    @isProcessing = false
+    @status = 'FAILED'
+    @data = null
+    @emit('fail')
+  finish: (@data, @mimeType='text/html; charset=utf-8') ->
+    @update "Generated file"
+    @isProcessing = false
+    @status = 'FINISHED'
+    @emit('finish', @data, @mimeType)
 
-  fail: (error) ->
-    #error = JSON.stringify(error) if not typeof error = 'string'
-    @_update(error, 'FAILED')
-    #@emit('error', 'FAILED')
-  
-  finish: (message, successUrl) ->
-    @_update(message, 'FINISHED')
-    @url = successUrl
-    @emit('success', 'FINISHED')
 
 
 module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer) ->
@@ -184,7 +201,7 @@ module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
   # Send the HTML to the PDF script
   options =
     env: process.env
-  pdf = spawn(argv.pdfgen, [ "--baseurl=#{argv.u}/content/", '--input=auto', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
+  pdf = spawn(argv.pdfgen, [ "--baseurl=#{argv.u}/content/", '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
   remoteGet originUrl, task, (err, text, statusCode) -> 
     if text
       task.work "Got data. Writing to prince #{text.length} chars"
