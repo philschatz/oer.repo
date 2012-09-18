@@ -34,9 +34,9 @@ argv = optimist
     describe  : 'Application root folder'
   )
   .options('g',
-    alias     : 'pdfgen'
+    alias     : 'pdfgen-url'
     default   : ''
-    describe  : 'Binary that converts a HTML+CSS file into a PDF'
+    describe  : 'URL to the PDF generation service (accepts /deposit)'
   )
   .options('x',
     alias     : 'debug-user'

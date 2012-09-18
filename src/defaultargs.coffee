@@ -9,5 +9,5 @@ module.exports = (argv) ->
   argv.r or= path.join(__dirname)
   argv.c or= path.join(argv.r, 'client')
   argv.u or= 'http://localhost' + (':' + argv.p) unless argv.p is 80
-  argv.g or= path.join(argv.r, 'pdfgen')
+  argv.g or= 'http://localhost' + (':' + (argv.p+1))
   argv

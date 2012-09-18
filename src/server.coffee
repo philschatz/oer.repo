@@ -142,12 +142,11 @@ module.exports = exports = (argv) ->
   # Routes have mostly been kept together by http verb
 
   # Helper that issues a PDF gen request to the PDF "service"
-  requestPdf = (resourceUrl) ->
+  requestPdf = (contentUrl, depositedTask) ->
+    # Note: DepositedTask has already completed. this piece just tacks on the URL to the PDF
     pdfTask = new Promise()
-    pdfTask.work 'Requesting PDF'
-    pdfTask.originUrl = resourceUrl
-    remoteGet "#{argv.u}/pdf/deposit?url=#{resourceUrl}", pdfTask, (err, text, statusCode) ->
-      pdfTask.finish "PDF Request Sent!", text.toString()
+    remoteGet "#{argv.g}/deposit?new=#{contentUrl}", pdfTask, (err, text, statusCode) ->
+      depositedTask.pdf = "#{argv.g}#{text.toString()}"
   
   # The prefix for "published" content (ie "/content/1234")
   CONTENT = "content"
@@ -314,17 +313,14 @@ module.exports = exports = (argv) ->
                   task.work 'Cleaned up HTML.'
                   task.work "updateContent id=#{id} user=#{req.user}"
                   task.finish cleanHtml
+
+                  # Request a PDF be generated
+                  depositedUrl = "#{argv.u}/#{ CONTENT }/#{obj.id}@#{obj.ver}"
+                  requestPdf(depositedUrl, task)
               else
                 task.fail("couldn't get data for some reason")
                 
           scopingHack(contentTask, contentUrl, id)
-    
-        urls = []
-        for id, obj of contentMap
-          depositedUrl = "#{argv.u}/#{ CONTENT }/#{obj.id}@#{obj.ver}"
-          urls.push(depositedUrl)
-          # Deriving a copy doesn't depend on generating a PDF
-          requestPdf(depositedUrl)
     
     setTimeout(doTheDeposit, 10)
     
