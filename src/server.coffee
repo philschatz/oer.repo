@@ -256,7 +256,7 @@ module.exports = exports = (argv) ->
           contentTask = obj.promise
 
           contentTask.work 'Importing/Cleaning'
-          scopingHack=(task, contentUrl, id) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
+          scopingHack=(task, contentUrl, id, obj) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
             href = url.parse(contentUrl)
             if contentUrl[0] == '<'
               context = new SingleFileContext(task, contentUrl)
@@ -320,7 +320,7 @@ module.exports = exports = (argv) ->
               else
                 task.fail("couldn't get data for some reason")
                 
-          scopingHack(contentTask, contentUrl, id)
+          scopingHack(contentTask, contentUrl, id, obj)
     
     setTimeout(doTheDeposit, 10)
     
