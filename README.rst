@@ -19,7 +19,7 @@ To download the dependencies::
 
 And, to start it up::
 
-  $ node bin/server.js
+  $ node bin/server.js --debug-user # So you don't need to authenticate via OpenID
 
 Or, to specify a port and hostname::
 
@@ -31,5 +31,5 @@ Then, point your browser to the admin interface at http://localhost:3000/admin
 
 If you are running this on an Internet-facing webserver then you will also need to specify the OpenID Domain (localhost is the default) as a command-line argument.
 
-  $ node bin/server -u "http://example.com:3000" 
+  $ node bin/server -u "http://example.com:3000"
 

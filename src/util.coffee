@@ -65,38 +65,45 @@ module.exports.Promise = class Promise extends EventEmitter
 module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer) ->
   deferred = Q.defer()
   task.work 'Cleaning up HTML. Parsing...'
-  doc = jsdom.jsdom(html, null, 
+  html = html.toString()
+  jsdom.env html, ["#{argv.u}/jquery-latest.js"],
     features:
       FetchExternalResources: false # ['img']
       ProcessExternalResources: false
-  )
-  window = doc.createWindow()
-  if window.document and window.document.documentElement and window.document.body
-    jsdom.jQueryify(window, "#{argv.u}/jquery-latest.js", (window, $) ->
+  , (errors, window) ->
+    if errors
+      # TODO: The following should be deferred.reject but it's set to "resolve" for the demo
+      #task.fail "Could not generate window.document.body for this HTML"
+      #deferred.reject(new Error("ERROR: This HTML file could not be parsed for some reason."))
+      task.work "Could not generate window.document.body for this HTML"
+      deferred.resolve "<html><body>ERROR: This HTML file could not be parsed for some reason.</body></html>"
+      return
+
+    if window.document and window.document.documentElement and window.document.body
       try
         task.work 'Starting clean'
         $ = window.jQuery
         $('script').remove()
         # $('head').remove() # TODO: look up attribution here
         $('*[style]').removeAttr('style')
-        
+
         task.work 'Cleaning up links'
         promises = []
         $('a[href]').each (i, a) ->
           innerDeferred = Q.defer()
           promises.push innerDeferred.promise
-          
+
           $el = $(@)
           linkRenamer $el.attr('href'), (err, newHref) ->
             if $el.attr('href') != newHref
               task.work "Changing link from #{$el.attr('href')} to #{newHref}"
               $el.attr('href', newHref)
             innerDeferred.resolve(newHref)
-  
+
         $('img[src]').each (i, a) ->
           innerDeferred = Q.defer()
           promises.push innerDeferred.promise
-          
+
           $el = $(@)
           resourceRenamer $el.attr('src'), 'image/jpeg', (err, newHref) ->
             if $el.attr('src') != newHref
@@ -108,7 +115,7 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
         $('link[rel=stylesheet]').each (i, a) ->
           innerDeferred = Q.defer()
           promises.push innerDeferred.promise
-          
+
           $el = $(@)
           resourceRenamer $el.attr('href'), 'text/css', (err, newHref) ->
             if $el.attr('href') != newHref
@@ -122,22 +129,15 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
 
         Q.all(promises)
         .then () ->
-          newHtml = doc.outerHTML
+          newHtml = window.document.outerHTML
           newHtml = newHtml.replace(/&nbsp;/g, '&#160;')
-          deferred.resolve(doc.outerHTML)
+          deferred.resolve(window.document.outerHTML)
         .end()
         task.work 'Done cleaning'
       catch error
         console.log 'cleanupHTML ERROR:'
         console.log error
         task.fail error
-    )
-  else
-    # TODO: The following should be deferred.reject but it's set to "resolve" for the demo
-    #task.fail "Could not generate window.document.body for this HTML"
-    #deferred.reject(new Error("ERROR: This HTML file could not be parsed for some reason."))
-    task.work "Could not generate window.document.body for this HTML"
-    deferred.resolve "<html><body>ERROR: This HTML file could not be parsed for some reason.</body></html>"
   deferred.promise
 
 
@@ -149,7 +149,7 @@ url = require('url')
 module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   getopts = url.parse(remoteUrl)
   task.work "Requesting remote resource #{ url.format(remoteUrl) }"
-  
+
   protocol = if 'https:' == getopts.protocol then https else http
   # TODO: This needs more robust error handling, just trying to
   # keep it from taking down the server.
@@ -184,8 +184,8 @@ module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   )
 
 
-# Used to add a PDF to the list of resources available
-module.exports.newResource = newResource = (content, contentType, originalURL) ->
+# Used to add to the list of resources available
+module.exports.newResource = (content, contentType, originalURL) ->
   id = resources.length
   # Wrapped in array because it's version 0
   resources.push
@@ -193,42 +193,3 @@ module.exports.newResource = newResource = (content, contentType, originalURL) -
     contentType: contentType
     originalURL: originalURL
   id
-
-
-spawn = require('child_process').spawn
-module.exports.generatePDF = generatePDF = (argv, task, originUrl) ->
-  task.work 'Getting remote resource for PDF'
-  # Send the HTML to the PDF script
-  options =
-    env: process.env
-  pdf = spawn(argv.pdfgen, [ "--baseurl=#{argv.u}/content/", '--input=html', '--verbose', '--output=/dev/stdout', '/dev/stdin' ], options)
-  remoteGet originUrl, task, (err, text, statusCode) -> 
-    if text
-      task.work "Got data. Writing to prince #{text.length} chars"
-      pdf.stdin.write(text)
-      pdf.stdin.end()
-    else
-      console.log("Error: pdf failing because no HTML was received")
-      task.fail err
-      pdf.exit()
-
-  pdfChunks = []
-  pdfChunksLen = 0
-  pdf.stdout.on 'data', (data) ->
-    pdfChunks.push data
-    pdfChunksLen += data.length
-  pdf.stderr.on 'data', (data) ->
-    task.work "Warning: #{data}"
-  
-  pdf.on 'exit', (code) ->
-    if 0 == code
-      pdfContent = new Buffer(pdfChunksLen)
-      pos = 0
-      for chunk in pdfChunks
-        chunk.copy(pdfContent, pos)
-        pos += chunk.length
-      id = newResource(pdfContent, 'application/pdf')
-      fileUrl = "#{argv.u}/resource/#{id}"
-      task.finish 'PDF Done!', fileUrl
-    else
-      task.fail "PDF Failed. Exit Code: #{code}.\n#{task.message}"

@@ -20,7 +20,6 @@ module.exports = exports = (argv) ->
   newResource = require('./util').newResource
   cleanupHTML = require('./util').cleanupHTML
   remoteGet   = require('./util').remoteGet
-  generatePDF = require('./util').generatePDF
 
   #### State ####
   # Stores in-memory state
@@ -32,7 +31,7 @@ module.exports = exports = (argv) ->
   # Create the main application object, app.
   app = express.createServer()
 
-  # bodyParser in connect 2.x uses node-formidable to parse 
+  # bodyParser in connect 2.x uses node-formidable to parse
   # the multipart form data.
   # Used for getting Zips deposited via POST
   app.use(express.bodyParser())
@@ -40,7 +39,7 @@ module.exports = exports = (argv) ->
   # defaultargs.coffee exports a function that takes the argv object that is passed in and then does its
   # best to supply sane defaults for any arguments that are missing.
   argv = require('./defaultargs')(argv)
-  
+
   newContent = (promise) ->
     id = content.length
     # Wrapped in array because it's version 0
@@ -58,7 +57,7 @@ module.exports = exports = (argv) ->
       newVer.users = versions[ver - 1].users
     versions.push newVer
     ver
-    
+
   # Checks if a given user can modify a given piece of content
   canChangeContent = (id, user) ->
     resource = content[id]
@@ -141,16 +140,9 @@ module.exports = exports = (argv) ->
   ##### Get routes #####
   # Routes have mostly been kept together by http verb
 
-  # Helper that issues a PDF gen request to the PDF "service"
-  requestPdf = (contentUrl, depositedTask) ->
-    # Note: DepositedTask has already completed. this piece just tacks on the URL to the PDF
-    pdfTask = new Promise()
-    remoteGet "#{argv.g}/deposit?new=#{contentUrl}", pdfTask, (err, text, statusCode) ->
-      depositedTask.pdf = "#{argv.g}#{text.toString()}"
-  
   # The prefix for "published" content (ie "/content/1234")
-  CONTENT = "content"
-  
+  CONTENT = 'content'
+
   # Deposit either a new piece of content or a new version of existing content
   # This can be any URL (for federation)
   # It can also be several URLs.
@@ -159,12 +151,13 @@ module.exports = exports = (argv) ->
     HTML_FILE_NAME = /\.x?html?$/
     # promises will eventually be an array of id's pointing to content that has been imported
     idsPromise = []
-    
+
+    # Provides a way of navigating a zip or remote URLs
     class Context
       getBase: () ->
       goInto: (href) ->
       getData: (callback) ->
-    
+
     class UrlContext extends Context
       constructor: (@task, @baseUrl) ->
       getBase: () -> url.format(@baseUrl)
@@ -185,8 +178,9 @@ module.exports = exports = (argv) ->
       constructor: (@task, @zipFile, @basePath) ->
       getBase: () -> @basePath
       goInto: (href) ->
-        # Local files in the zip can either point to other local files
-        # or to remote files.
+        # Local files in the zip can point to:
+        # - other local files
+        # - or to remote files
         if url.parse(href).protocol
           new UrlContext(@task, url.parse(href))
         else
@@ -197,7 +191,7 @@ module.exports = exports = (argv) ->
           # Try to get the data asynchronously since it uses native zlib
           # But if we get a bad CRC the async code throws an exception instead of returning the partial data
           # So, in that case, get the data synchronously (something is better than nothing?)
-          
+
           # The next lines are commented because I apparently can't catch Errors
           #try
           #  entry.getDataAsync (data) ->
@@ -208,7 +202,7 @@ module.exports = exports = (argv) ->
             callback(not data, data)
         else
           callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
-    
+
     # First, invert the query string so the dictionary is { depositURL -> repoId }
     contentMap = {}
     zipFile = null
@@ -233,7 +227,7 @@ module.exports = exports = (argv) ->
           promise = new Promise()
           ver = newContentVersion(id, promise)
           contentMap[urls] = { id: id, ver: ver, promise: promise }
-    
+
     # If they are uploading a zip and did not explicitly specify any html files, add them all
     if zipFile?
       # Check if any of the files to deposit are local (not an absolute URL and not raw HTML)
@@ -249,8 +243,8 @@ module.exports = exports = (argv) ->
             promise = new Promise()
             id = newContent(promise)
             contentMap[entry.entryName] = { id: id, ver: 0, promise: promise }
-        
-    doTheDeposit = () ->    
+
+    doTheDeposit = () ->
         for contentUrl, obj of contentMap
           id = obj.id
           contentTask = obj.promise
@@ -270,10 +264,10 @@ module.exports = exports = (argv) ->
               # TODO: Split off the text after the last slash
               context = new PathContext(task, zipFile, href.pathname)
             else task.fail 'Specified href to content without providing a zip payload or a hostname to pull from'
-    
+
             deferred = Q.defer()
             idsPromise.push deferred.promise
-            
+
             # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
             linkRenamer = (href, callback) ->
               # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
@@ -292,7 +286,7 @@ module.exports = exports = (argv) ->
                   callback(false, href)
                 else
                   callback(true)
-    
+
             resourceRenamer = (href, contentType, callback) ->
               context.goInto(href).getData (err, content) ->
                 if not err
@@ -303,7 +297,7 @@ module.exports = exports = (argv) ->
                   console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
                   # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
                   callback(err, "Problem loading resource")
-            
+
             context.getData (err, text, statusCode) ->
               if not err
                 # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
@@ -314,16 +308,14 @@ module.exports = exports = (argv) ->
                   task.work "updateContent id=#{id} user=#{req.user}"
                   task.finish cleanHtml
 
-                  # Request a PDF be generated
-                  depositedUrl = "#{argv.u}/#{ CONTENT }/#{obj.id}@#{obj.ver}"
-                  requestPdf(depositedUrl, task)
+                  #TODO Request a PDF to be generated
               else
                 task.fail("couldn't get data for some reason")
-                
+
           scopingHack(contentTask, contentUrl, id, obj)
-    
+
     setTimeout(doTheDeposit, 10)
-    
+
     # Return a mapping of uploaded URL/hrefs to content URLs
     ret = {}
     for href, obj of contentMap
@@ -381,7 +373,7 @@ module.exports = exports = (argv) ->
       cleanupHTML(argv, html, task, resourceRenamer, (cleanedHTML) ->
         promise.finish(cleanedHTML) # Don't send a set of new users
         newUrl = "#{argv.u}/#{ CONTENT }/#{id}@#{ver}"
-        requestPdf(newUrl)
+        #TODO request a PDF to be generated
       )
       res.send "/#{ CONTENT }/#{id}@#{ver}"
     else
@@ -394,10 +386,6 @@ module.exports = exports = (argv) ->
     res.redirect('index')
   )
 
-  #### PDF "repo" ####
-  # Fortunately we just need to implement "derive"
-  # We can piggy back on the in-mem event system
-  
   app.get('/resource/:id([0-9]+)', (req, res) ->
     # Set the mimetype for the resource
     id = req.params.id
@@ -406,16 +394,7 @@ module.exports = exports = (argv) ->
     res.contentType resource.contentType
     res.send resource.content
   )
-  
-  app.get('/pdf/deposit', (req, res) ->
-    originUrl = req.query.url
-    task = new Promise()
-    task.work 'PDFGEN'
-    task.origin = originUrl
-    generatePDF argv, task, originUrl
-    res.send "#{argv.u}/tasks/#{task.id}"
-  )
-  
+
   #### Admin Page ####
   app.get('/admin', (req, res) ->
     res.render('admin.html', {}) # {} is vars
