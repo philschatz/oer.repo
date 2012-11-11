@@ -17,9 +17,9 @@ module.exports = exports = (argv) ->
 
   # Local util objects/functions
   Promise     = require('./util').Promise
-  newResource = require('./util').newResource
   cleanupHTML = require('./util').cleanupHTML
   remoteGet   = require('./util').remoteGet
+  asyncDeposit = require('./util').asyncDeposit
 
   #### State ####
   # Stores in-memory state
@@ -143,185 +143,164 @@ module.exports = exports = (argv) ->
   # The prefix for "published" content (ie "/content/1234")
   CONTENT = 'content'
 
-  # Deposit either a new piece of content or a new version of existing content
+  # Deposit either a new piece of content (>=1) or new versions of existing content
+  #
+  # The minimum information that needs to be conveyed is:
+  # - The payload (zip)
+  # - For each piece of content whether it's a new piece of content or updating
+  #     an existing piece of content
+  # - How to find each piece of content
+  #
+  # 'deposit' is my way of implementing the PUBLISH/SAVE features of the unpub/pub repos.
+  #
   # This can be any URL (for federation)
   # It can also be several URLs.
   # Each query parameter is either an id (in which case it's an update) or "new" in which case it's new content
+  #
+  # Structure of the POST parameters:
+  # 'archive' = BINARY_ZIP_FILE : We're getting a zip file.
+  #                 If there are no other POST parameters then
+  #                 create new content from all the HTML files in the zip
+  #                 (ie EPUB import).
+  # ID = VALUE : This tells the deposit where to get the content (VALUE)
+  #               and what to do with it (ID)
+  #
+  # Possible ID's:
+  #   'new' : The content doesn't have an id yet so deposit will create one
+  #   UUID  : This piece of published content is being updated.
+  #           If the authenticated user has permissions to change this content
+  #           then update it. Otherwise return an publish error.
+  #
+  # Possible VALUEs:
+  #   URL   : A full URL to pull content from (this is the 'pull' API)
+  #   HREF  : A path to an HTML file in the ZIP ('push' API)
+  #   HTML_TEXT : The raw HTML to use
+  #             (this is so the edit repo API is the same as the published repo API)
+  #
+  # Example POST parameters:
+  #   archive : BINARY_DATA
+  #   'col01' : 'toc.html'
+  #   'm1234' : 'chapters/ch1.html'
+  #   'm5678' : 'chapters/ch2.html'
+  #   new     : 'chapters/ch3.html'
+  #   new     : 'chapters/ch4.html'
+  #
+  #  ---------- Some remote examples (these can be in the same POST)------------
+  #   'm9003' : 'http://editor.cnx.org/content/2k3jh'
+  #   new     : 'http://editor.cnx.org/content/9283y'
+  #
+  #  ---------- Sending the HTML directly (think 'saving'; can also be in same POST)------------
+  #   new     : '<html><body>Hello World</body></html>'
+  #   '2k3jh' : '<html><body>Hello There Cruel World</body></html>'
+  #
   app.post('/deposit', authenticated, (req, res, next) ->
     HTML_FILE_NAME = /\.x?html?$/
-    # promises will eventually be an array of id's pointing to content that has been imported
-    idsPromise = []
 
-    # Provides a way of navigating a zip or remote URLs
-    class Context
-      getBase: () ->
-      goInto: (href) ->
-      getData: (callback) ->
+    # ------------------------------
+    # Start figuring out what content we have and if we have permission to update it
+    # ------------------------------
 
-    class UrlContext extends Context
-      constructor: (@task, @baseUrl) ->
-      getBase: () -> url.format(@baseUrl)
-      goInto: (href) ->
-        new UrlContext(@task, url.resolve(@baseUrl, href))
-      getData: (callback) ->
-        remoteGet @baseUrl, @task, callback
+    # First make sure the user has permission to change all the content that is being updated
+    postParams = req.body or []
+    for id of postParams
+      if 'new' != id and not canChangeContent(id, req.user)
+        res.send "ERROR: You do not have permission to change #{id}"
+        return
 
-    class SingleFileContext extends Context
-      constructor: (@task, @htmlText) ->
-      getBase: () -> '.'
-      goInto: (href) ->
-        new UrlContext(@task, url.parse(href))
-      getData: (callback) ->
-        callback(null, @htmlText)
+    # ------------------------------
+    #  Build dictionary of content to deposit
+    # ------------------------------
 
-    class PathContext extends Context
-      constructor: (@task, @zipFile, @basePath) ->
-      getBase: () -> @basePath
-      goInto: (href) ->
-        # Local files in the zip can point to:
-        # - other local files
-        # - or to remote files
-        if url.parse(href).protocol
-          new UrlContext(@task, url.parse(href))
+    # Next we need to build a dictionary of {id -> how-to-get-the-content}
+    # This is used by the renaming pass to convert local paths (in the zip) to the
+    # published id's.
+    # During this phase new content is given a fresh id.
+
+    class HrefLookup
+      constructor: ->
+        @map = {}
+      isEmpty: () -> @map ? true: false
+      # A way to iterate over all the content
+      each: (iterator) ->
+        for href, value of @map
+          iterator(href, value)
+      # Put a new piece of content in
+      # Creates a new id if it is new content
+      # Creates a new version if it is updating existing content
+      put: (href, id=null) ->
+        promise = new Promise()
+        if null == id
+          id = newContent(promise)
+          ver = 0
         else
-          new PathContext(@task, @zipFile, path.normalize(path.join(path.dirname(@basePath), href)))
-      getData: (callback) ->
-        entry = @zipFile.getEntry(@basePath)
-        if entry
-          # Try to get the data asynchronously since it uses native zlib
-          # But if we get a bad CRC the async code throws an exception instead of returning the partial data
-          # So, in that case, get the data synchronously (something is better than nothing?)
-
-          # The next lines are commented because I apparently can't catch Errors
-          #try
-          #  entry.getDataAsync (data) ->
-          #    callback(not data, data)
-          #catch error
-            console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
-            data = entry.getData()
-            callback(not data, data)
-        else
-          callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
-
-    # First, invert the query string so the dictionary is { depositURL -> repoId }
-    contentMap = {}
-    zipFile = null
-    if req.files and req.files.archive and req.files.archive.size
-      console.log "Received file named #{req.files.archive.name} with size #{req.files.archive.size}"
-      zipFile = new AdmZip(req.files.archive.path)
-
-    if req.body
-      for id, urls of req.body
-        # Either it's new content or it's a new version of existing content
-        if id == 'new'
-          if urls not instanceof Array
-            urls = [ urls ]
-          # For each piece of new content deposit it and get back the id
-          for originUrl in urls
-            # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
-            if originUrl # Each of these URL's could be the empty string. If so, ignore it
-              promise = new Promise()
-              id = newContent(promise)
-              contentMap[originUrl] = { id: id, ver: 0, promise: promise }
-        else
-          promise = new Promise()
           ver = newContentVersion(id, promise)
-          contentMap[urls] = { id: id, ver: ver, promise: promise }
+        @map[href] = { id: id, ver: ver, promise: promise }
+      getId:      (href) -> @map[href].id
+      getVer:     (href) -> @map[href].ver
+      getPromise: (href) -> @map[href].promise
 
-    # If they are uploading a zip and did not explicitly specify any html files, add them all
-    if zipFile?
-      # Check if any of the files to deposit are local (not an absolute URL and not raw HTML)
-      foundLocalHref = false
-      for href of contentMap
-        if href[0] != '<' and not url.parse(href).protocol
-          foundLocalHref = true
-      if not foundLocalHref
-        for entry in zipFile.getEntries()
+    # Populate the hrefLookup object using the POST parameters
+    hrefLookup = new HrefLookup()
+    for id, hrefs of postParams
+      # hrefs could either be a string or an array of strings (if id='new')
+
+      # Either it's new content or it's a new version of existing content
+      if id == 'new'
+        if hrefs not instanceof Array
+          hrefs = [ hrefs ]
+        # For each piece of new content deposit it and get back the id
+        for href in hrefs
+          # TODO: support subdirs in the ZIP. href = context.goInto(href).basePath
+          if href # Each of these URL's could be the empty string. If so, ignore it
+            hrefLookup.put(href)
+      else
+        if hrefs instanceof Array
+          throw new Error('Cannot update the same content more than once in a single deposit')
+        href = hrefs
+        hrefLookup.put(href, id)
+
+
+    # If an archive was provided then open it up
+    hasArchive = req.files and req.files['archive'] and req.files['archive'].size
+    archiveZip = null
+    if hasArchive
+      console.log "Received file named #{req.files['archive'].name} with size #{req.files['archive'].size}"
+      archiveZip = new AdmZip(req.files['archive'].path)
+
+      # If an archive is sent and no POST parameters were specified then just include
+      # all HTML files in the archive
+      if hrefLookup.isEmpty()
+        for entry in archiveZip.getEntries()
           continue if entry.name[0] == '.' # Skip hidden files
           if HTML_FILE_NAME.test entry.name
             console.log "No URLs specified, adding HTML file from Zip named #{entry.entryName}"
-            promise = new Promise()
-            id = newContent(promise)
-            contentMap[entry.entryName] = { id: id, ver: 0, promise: promise }
+            hrefLookup.put(entry.entryName)
 
-    doTheDeposit = () ->
-        for contentUrl, obj of contentMap
-          id = obj.id
-          contentTask = obj.promise
 
-          contentTask.work 'Importing/Cleaning'
-          scopingHack=(task, contentUrl, id, obj) -> # Grr, stupid scoping 'issue' with Javascript loops and closures...
-            href = url.parse(contentUrl)
-            if contentUrl[0] == '<'
-              context = new SingleFileContext(task, contentUrl)
-            else if href.protocol
-              # TODO: Split off the text after the last slash
-              context = new UrlContext(task, href)
-            else if zipFile
-              # Verify the file exists in the zip
-              if not zipFile.getEntry(href.pathname)
-                task.fail "Uploaded zip file does not contain a file named #{href.pathname}"
-              # TODO: Split off the text after the last slash
-              context = new PathContext(task, zipFile, href.pathname)
-            else task.fail 'Specified href to content without providing a zip payload or a hostname to pull from'
+    # ------------------------------
+    #  Done preparing
+    # (that's all we can do synchronously)
+    # ------------------------------
 
-            deferred = Q.defer()
-            idsPromise.push deferred.promise
+    # Fire off a worker and return the list of id's and versions
+    # so the user can monitor the progress of publishing their set of content
 
-            # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
-            linkRenamer = (href, callback) ->
-              # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
-              [newHref, inPageId] = href.split('#')
-              if newHref == ''
-                # It's a local link. Don't change it.
-                callback(false, href)
-              else
-                newHref = context.goInto(newHref).getBase()
-                if newHref of contentMap
-                  newId = contentMap[newHref].id
-                  newHref = "#{newId}"
-                  newHref += '#' + inPageId if inPageId?
-                  callback(false, newHref)
-                else if url.parse(newHref).protocol
-                  callback(false, href)
-                else
-                  callback(true)
-
-            resourceRenamer = (href, contentType, callback) ->
-              context.goInto(href).getData (err, content) ->
-                if not err
-                  # "Import" the resource
-                  rid = newResource(content, contentType, context.goInto(href).getBase())
-                  callback(err, "/resource/#{rid}")
-                else
-                  console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
-                  # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
-                  callback(err, "Problem loading resource")
-
-            context.getData (err, text, statusCode) ->
-              if not err
-                # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
-                task.work('Cleaning up the HTML')
-                promise = cleanupHTML(argv, text, task, resourceRenamer, linkRenamer)
-                promise.then (cleanHtml) ->
-                  task.work 'Cleaned up HTML.'
-                  task.work "updateContent id=#{id} user=#{req.user}"
-                  task.finish cleanHtml
-
-                  #TODO Request a PDF to be generated
-              else
-                task.fail("couldn't get data for some reason")
-
-          scopingHack(contentTask, contentUrl, id, obj)
-
-    setTimeout(doTheDeposit, 10)
+    setTimeout (-> asyncDeposit(argv, hrefLookup, archiveZip)), 10
 
     # Return a mapping of uploaded URL/hrefs to content URLs
     ret = {}
-    for href, obj of contentMap
-      ret[href] = "/#{ CONTENT }/#{obj.id}@#{obj.ver}"
-    res.send JSON.stringify(ret)
-  )
+    hrefLookup.each (href, value) ->
+      id = value.id
+      ver = value.ver
+      ret[href] = "/#{ CONTENT }/#{id}@#{ver}"
+
+    # Return a href -> id@ver dictionary of everything submitted
+    # Shortcut if only 1 piece of content was sent
+    if 1 == Object.keys(ret).length
+      res.send ret[Object.keys(ret)[0]]
+    else
+      res.send JSON.stringify(ret)
+  ) # END app.post('/deposit'
 
   # For debugging
   app.get("/#{ CONTENT }/", (req, res) ->
@@ -364,7 +343,7 @@ module.exports = exports = (argv) ->
 
   app.post("/#{ CONTENT }/:id([0-9]+)", authenticated, (req, res) ->
     id = req.params.id
-    if canChangeContent id, req.user
+    if canChangeContent(id, req.user)
       html = req.body.body
       task = new Promise()
       task.work 'Committing new version'

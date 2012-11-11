@@ -37,7 +37,8 @@ module.exports.Promise = class Promise extends EventEmitter
       throw err
     @modified = new Date()
     @history.push msg
-    if @history.length > 50
+    console.log msg
+    if @history.length > 500
       @history.splice(0,1)
     @emit('update', msg)
 
@@ -50,6 +51,7 @@ module.exports.Promise = class Promise extends EventEmitter
 
   fail: (msg) ->
     @update msg
+    @update 'FAILED!!!!!'
     @isProcessing = false
     @status = 'FAILED'
     @data = null
@@ -62,8 +64,7 @@ module.exports.Promise = class Promise extends EventEmitter
 
 
 
-module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer) ->
-  deferred = Q.defer()
+module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer, callback) ->
   task.work 'Cleaning up HTML. Parsing...'
   html = html.toString()
   jsdom.env html, ["#{argv.u}/jquery-latest.js"],
@@ -76,69 +77,78 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
       #task.fail "Could not generate window.document.body for this HTML"
       #deferred.reject(new Error("ERROR: This HTML file could not be parsed for some reason."))
       task.work "Could not generate window.document.body for this HTML"
-      deferred.resolve "<html><body>ERROR: This HTML file could not be parsed for some reason.</body></html>"
-      return
+      callback(new Error('Could not generate window.document.body (usually a malformed HTML file'))
 
-    if window.document and window.document.documentElement and window.document.body
-      try
-        task.work 'Starting clean'
-        $ = window.jQuery
-        $('script').remove()
-        # $('head').remove() # TODO: look up attribution here
-        $('*[style]').removeAttr('style')
+    errors = null # possibly set one if an error is caught
+    newHtml = null
+    promises = [] # Since converting images are asynchronous we use
+                  # Promises to call the callback once all conversions are done
+    try
+      task.work 'Starting clean'
+      $ = window.jQuery
+      $('script').remove()
+      # $('head').remove() # TODO: look up attribution here
+      $('*[style]').removeAttr('style')
 
-        task.work 'Cleaning up links'
-        promises = []
-        $('a[href]').each (i, a) ->
-          innerDeferred = Q.defer()
-          promises.push innerDeferred.promise
+      task.work 'Cleaning up links'
+      newHrefs = {}
+      $('a[href]').each (i, a) ->
+        $el = $(@)
+        innerDeferred = Q.defer()
+        promises.push innerDeferred.promise
+        linkRenamer $el.attr('href'), (err, newHref) ->
+          href = $el.attr('href')
+          if href != newHref
+            newHrefs[href] = newHref
+            task.work "Changing link from #{href} to #{newHref}"
+            $el.attr('href', newHref)
+          innerDeferred.resolve newHref
 
-          $el = $(@)
-          linkRenamer $el.attr('href'), (err, newHref) ->
-            if $el.attr('href') != newHref
-              task.work "Changing link from #{$el.attr('href')} to #{newHref}"
-              $el.attr('href', newHref)
-            innerDeferred.resolve(newHref)
+      $('img[src]').each (i, a) ->
+        $el = $(@)
+        innerDeferred = Q.defer()
+        promises.push innerDeferred.promise
+        resourceRenamer $el.attr('src'), 'image/jpeg', (err, newHref) ->
+          href = $el.attr('src')
+          if href != newHref
+            newHrefs[href] = newHref
+            task.work "Changing image resource from #{href} to #{newHref}"
+            $el.attr('src', newHref)
+          innerDeferred.resolve newHref
 
-        $('img[src]').each (i, a) ->
-          innerDeferred = Q.defer()
-          promises.push innerDeferred.promise
+      # For giggles also include CSS files
+      $('link[rel=stylesheet]').each (i, a) ->
+        $el = $(@)
+        innerDeferred = Q.defer()
+        promises.push innerDeferred.promise
+        resourceRenamer $el.attr('href'), 'text/css', (err, newHref) ->
+          href = $el.attr('href')
+          if href != newHref
+            newHrefs[href] = newHref
+            task.work "Changing CSS from #{href} to #{newHref}"
+            $el.attr('href', newHref)
+          innerDeferred.resolve newHref
 
-          $el = $(@)
-          resourceRenamer $el.attr('src'), 'image/jpeg', (err, newHref) ->
-            if $el.attr('src') != newHref
-              task.work "Changing resource from #{$el.attr('src')} to #{newHref}"
-              $el.attr('src', newHref)
-            innerDeferred.resolve(newHref)
+      # Remove the base tag
+      $('head > base[href]').remove()
 
-        # For giggles also include CSS files
-        $('link[rel=stylesheet]').each (i, a) ->
-          innerDeferred = Q.defer()
-          promises.push innerDeferred.promise
+      task.work 'Done cleaning'
+    catch error
+      console.log 'cleanupHTML ERROR:'
+      console.log error
+      task.fail error
+      errors = error
 
-          $el = $(@)
-          resourceRenamer $el.attr('href'), 'text/css', (err, newHref) ->
-            if $el.attr('href') != newHref
-              task.work "Changing resource from #{$el.attr('href')} to #{newHref}"
-              $el.attr('href', newHref)
-            innerDeferred.resolve(newHref)
-
-        # Remove the base tag
-        $('head > base[href]').each (i, a) ->
-          $(@).remove()
-
-        Q.all(promises)
-        .then () ->
-          newHtml = window.document.outerHTML
-          newHtml = newHtml.replace(/&nbsp;/g, '&#160;')
-          deferred.resolve(window.document.outerHTML)
-        .end()
-        task.work 'Done cleaning'
-      catch error
-        console.log 'cleanupHTML ERROR:'
-        console.log error
-        task.fail error
-  deferred.promise
+    # Once all the images and links are converted this cleanup is done
+    if errors
+      callback(errors)
+    else
+      Q.all(promises)
+      .then ->
+        newHtml = window.document.outerHTML
+        newHtml = newHtml.replace(/&nbsp;/g, '&#160;')
+        callback(errors, newHtml, newHrefs)
+      .end()
 
 
 
@@ -185,7 +195,7 @@ module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
 
 
 # Used to add to the list of resources available
-module.exports.newResource = (content, contentType, originalURL) ->
+newResource = (content, contentType, originalURL) ->
   id = resources.length
   # Wrapped in array because it's version 0
   resources.push
@@ -193,3 +203,153 @@ module.exports.newResource = (content, contentType, originalURL) ->
     contentType: contentType
     originalURL: originalURL
   id
+
+
+
+
+# ----------------------------------
+# The asynchronous deposit code
+# ----------------------------------
+#
+# This consists of several helper classes and functions that convert the
+# content so it all points to repository id's
+# and errors otherwise
+
+# ----------------------------
+# Navigation Classes
+# ----------------------------
+
+# These provide a way of navigating a zip or remote URLs
+# Requires remoteGet and the url, path packages
+class Context
+  getBase: () ->
+  goInto: (href) ->
+  getData: (callback) ->
+
+class UrlContext extends Context
+  constructor: (@task, @baseUrl) ->
+  getBase: () -> url.format(@baseUrl)
+  goInto: (href) ->
+    new UrlContext(@task, url.resolve(@baseUrl, href))
+  getData: (callback) ->
+    remoteGet @baseUrl, @task, callback
+
+class SingleFileContext extends Context
+  constructor: (@task, @htmlText) ->
+  getBase: () -> '.'
+  goInto: (href) ->
+    new UrlContext(@task, url.parse(href))
+  getData: (callback) ->
+    callback(null, @htmlText)
+
+class PathContext extends Context
+  constructor: (@task, @archiveZip, @basePath) ->
+  getBase: () -> @basePath
+  goInto: (href) ->
+    # Local files in the zip can point to:
+    # - other local files
+    # - or to remote files
+    if url.parse(href).protocol
+      new UrlContext(@task, url.parse(href))
+    else
+      new PathContext(@task, @archiveZip, path.normalize(path.join(path.dirname(@basePath), href)))
+  getData: (callback) ->
+    entry = @archiveZip.getEntry(@basePath)
+    if entry
+      # Try to get the data asynchronously since it uses native zlib
+      # But if we get a bad CRC the async code throws an exception instead of returning the partial data
+      # So, in that case, get the data synchronously (something is better than nothing?)
+
+      # The next lines are commented because I apparently can't catch Errors
+      #try
+      #  entry.getDataAsync (data) ->
+      #    callback(not data, data)
+      #catch error
+        console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
+        data = entry.getData()
+        callback(not data, data)
+    else
+      callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
+
+# Helper function that instantiates the correct context based on the href
+# Note: archiveZip could be null
+makeContext = (promise, href, archiveZip) ->
+  contentUrl = url.parse(href)
+  if href[0] == '<'
+    context = new SingleFileContext(promise, href)
+  else if contentUrl.protocol
+    # TODO: Split off the text after the last slash
+    context = new UrlContext(promise, contentUrl)
+  else if archiveZip
+    # Verify the file exists in the zip
+    if not archiveZip.getEntry(contentUrl.pathname)
+      promise.fail "Uploaded zip file does not contain a file named #{contentUrl.pathname}"
+    # TODO: Split off the text after the last slash
+    context = new PathContext(promise, archiveZip, contentUrl.pathname)
+  else
+    promise.fail 'Specified href to content without providing a zip payload or a hostname to pull from'
+    context = null
+  return context
+
+module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
+  hrefLookup.each (href) ->
+    id = hrefLookup.getId(href)
+    # Log that we're doing something on this piece of content
+    promise = hrefLookup.getPromise(href)
+    context = makeContext(promise, href, archiveZip)
+    # TODO: if context = null then don't bother continuing (already failed the promise)
+    return if not context
+
+    promise.work('Importing/Cleaning')
+
+    deferred = Q.defer()
+    idsPromise = []
+    idsPromise.push deferred.promise
+
+    # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
+    linkRenamer = (href, callback) ->
+      # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
+      [newHref, inPageId] = href.split('#')
+      if newHref == ''
+        # It's a local link. Don't change it.
+        callback(false, href)
+      else
+        newHref = context.goInto(newHref).getBase()
+        if newHref of hrefLookup
+          newId = hrefLookup[newHref].id
+          newHref = "#{newId}"
+          newHref += '#' + inPageId if inPageId?
+          callback(false, newHref)
+        else if url.parse(newHref).protocol
+          callback(false, href)
+        else
+          callback(true)
+
+    resourceRenamer = (href, contentType, callback) ->
+      context.goInto(href).getData (err, content) ->
+        if not err
+          # "Import" the resource
+          rid = newResource(content, contentType, context.goInto(href).getBase())
+          callback(err, "/resource/#{rid}")
+        else
+          console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
+          # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
+          callback(err, "Problem loading resource")
+
+    # Pull out the file from the zip, clean it up (renaming links and storing images)
+    # and then save the file (promise.finish)
+    context.getData (err, text, statusCode) ->
+      if not err
+        # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
+        promise.work('Cleaning up the HTML')
+        cleanupHTML argv, text, promise, resourceRenamer, linkRenamer, (error, cleanHtml) ->
+          if error
+            promise.fail('Problem in cleanup. Maybe the file is invalid HTML or points to invalid links')
+          else
+            promise.work 'Cleaned up HTML.'
+            promise.work "updateContent id=#{id}"
+            promise.finish cleanHtml
+
+          #TODO Request a PDF to be generated
+      else
+        promise.fail("couldn't get data for some reason")
