@@ -2,9 +2,21 @@ EventEmitter = require('events').EventEmitter
 jsdom = require('jsdom') # For HTML cleanup
 Q = require('q') # Promises, Promises
 
+# Used for remoteGet
+http = require('http')
+https = require('https')
+url = require('url')
+
 module.exports.resources = resources = []
 module.exports.events = events = []
 
+# ----------------------------------
+# Promises either return a JSON object representing the status of the resource
+# or the resource itself if processing is complete
+#
+# update/finish/fail all update the state as the promise is being worked on
+# .send() takes the HTTP Response object and writes either the JSON or the content.
+# ----------------------------------
 module.exports.Promise = class Promise extends EventEmitter
   constructor: (prerequisite) ->
     events.push @
@@ -20,6 +32,7 @@ module.exports.Promise = class Promise extends EventEmitter
         that.update 'Prerequisite task failed'
         that.fail()
       prerequisite.on 'finish', (_, mimeType) -> that.update "Prerequisite finished generating object with mime-type=#{mimeType}"
+
   # Send either the data (if available), or a HTTP Status with this JSON
   send: (res) ->
     if @isProcessing
@@ -63,7 +76,19 @@ module.exports.Promise = class Promise extends EventEmitter
     @emit('finish', @data, @mimeType)
 
 
+# ---------------------------------------
+# The HTML Scrubber
+# ---------------------------------------
 
+# This method (using the Context class) can operate on zip files or remote URLs.
+#
+# The cleanup steps are:
+# - parse an HTML string using jsdom
+# - use jQuery to find interesting nodes like links and images
+# - get the bits for the image and store them in the /resources asynchronously
+#
+# cleanupHTML takes 2 functions that are
+#
 module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer, callback) ->
   task.work 'Cleaning up HTML. Parsing...'
   html = html.toString()
@@ -150,11 +175,6 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
         callback(errors, newHtml, newHrefs)
       .end()
 
-
-
-http = require('http')
-https = require('https')
-url = require('url')
 
 module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   getopts = url.parse(remoteUrl)
@@ -291,6 +311,12 @@ makeContext = (promise, href, archiveZip) ->
     context = null
   return context
 
+# ------------------------------
+# Given a mapping from published id's to local hrefs into the zip or other public URLs
+# and an optional zip, perform the 'deposit' by:
+# - Converting local links to published id's
+# - Importing images and other resources (from the ZIP or remote URLs)
+# ------------------------------
 module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
   hrefLookup.each (href) ->
     id = hrefLookup.getId(href)
@@ -306,8 +332,12 @@ module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
     idsPromise = []
     idsPromise.push deferred.promise
 
-    # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
-    linkRenamer = (href, callback) ->
+    # Convert absolute URLs and relative hrefs into relative hrefs to published content
+    #
+    # The outside variables it relies on to work are
+    # - context : for navigating through the zip or remote URLs
+    # - hrefLookup : for knowing how to resolve other new content
+    linkRenamer = (href) ->
       # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
       [newHref, inPageId] = href.split('#')
       if newHref == ''
@@ -315,16 +345,20 @@ module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
         callback(false, href)
       else
         newHref = context.goInto(newHref).getBase()
+        # If the href points to content being published (in hrefLookup) then
+        # use the id to the published content
         if newHref of hrefLookup
           newId = hrefLookup[newHref].id
           newHref = "#{newId}"
           newHref += '#' + inPageId if inPageId?
           callback(false, newHref)
+        # If the href points to some other absolute URL then don't change the href
         else if url.parse(newHref).protocol
           callback(false, href)
         else
           callback(true)
 
+    # This tool will "import" a resource (think image) pointed to by context/href (a remote URL or inside the Zip file)
     resourceRenamer = (href, contentType, callback) ->
       context.goInto(href).getData (err, content) ->
         if not err
