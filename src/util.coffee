@@ -1,22 +1,36 @@
+# This file mostly deals with depositing a set of resources asynchronously.
+# In this file are:
+#
+# 1. a `Promise` utility class that handles HTTP responses when a piece of content has not finished generating yet
+# 2. `Context` utility classes for navigating a ZIP file or remote HTTP files
+# 3. a `cleanupHtml` method that parses HTML into a DOM and uses jQuery to update links and references to resources
+# 4. a `remoteGet` method that makes GET queries to remote URLs to get resources like images to store in the repository
+# 5. the `asyncDeposit` method.
+
+# ## Packages used
+# For navigating zip files using local hrefs (like `../../ch2/index.html`)
+path = require('path')
+# For the `Promise` class
 EventEmitter = require('events').EventEmitter
-jsdom = require('jsdom') # For HTML cleanup
+# For parsing and cleaning up the HTML
+jsdom = require('jsdom')
+# To wait until all links are renamed and resources imported
 Q = require('q') # Promises, Promises
 
-# Used for remoteGet
+# These are packages used for remoteGet
 http = require('http')
 https = require('https')
 url = require('url')
 
+# The in-memory resources are stored here and are used here and in the server
 module.exports.resources = resources = []
-module.exports.events = events = []
 
-# ----------------------------------
-# Promises either return a JSON object representing the status of the resource
+# ## Promise
+# A Promise either returns a JSON object representing the status of the resource
 # or the resource itself if processing is complete
 #
-# update/finish/fail all update the state as the promise is being worked on
-# .send() takes the HTTP Response object and writes either the JSON or the content.
-# ----------------------------------
+# `.update/finish/fail` all update the state as the promise is being worked on
+# `.send()` takes the HTTP Response object and writes either the JSON or the content.
 module.exports.Promise = class Promise extends EventEmitter
   constructor: (prerequisite) ->
     events.push @
@@ -42,7 +56,16 @@ module.exports.Promise = class Promise extends EventEmitter
       res.send @data
     else
       res.status(404).send @
+  # Update the promise without completing it
+  work: (message, @status='WORKING') ->
+    @update(message)
+    @emit('work')
+  wait: (message, @status='PAUSED') ->
+    @update(message)
+    @emit('work')
+  # Internal method that performs the update
   update: (msg) ->
+    # If the promise has already completed then a call to this method is a bug that should be fixed
     if @status == 'FINISHED' or @status == 'FAILED'
       message = @history[@history.length-1]
       err = { event: @, message: "This event already completed with status #{@status} and message='#{message}'", newMessage: msg }
@@ -55,13 +78,8 @@ module.exports.Promise = class Promise extends EventEmitter
       @history.splice(0,1)
     @emit('update', msg)
 
-  work: (message, @status='WORKING') ->
-    @update(message)
-    @emit('work')
-  wait: (message, @status='PAUSED') ->
-    @update(message)
-    @emit('work')
-
+  # Complete a Promise (task) because something went wrong.
+  # If this is called the promise will return a 404.
   fail: (msg) ->
     @update msg
     @update 'FAILED!!!!!'
@@ -69,54 +87,53 @@ module.exports.Promise = class Promise extends EventEmitter
     @status = 'FAILED'
     @data = null
     @emit('fail')
+  # Complete a Promise (task) because the resource or content was created.
   finish: (@data, @mimeType='text/html; charset=utf-8') ->
     @update "Generated file"
     @isProcessing = false
     @status = 'FINISHED'
     @emit('finish', @data, @mimeType)
 
+# # Asynchronous Deposits
+# This consists of several utility classes and methods outlined below.
 
-# ---------------------------------------
-# The HTML Scrubber
-# ---------------------------------------
+# ### The HTML Scrubber
 
-# This method (using the Context class) can operate on zip files or remote URLs.
+# This method cleans up HTML so links and resources point to the right place
+# By using the Context class it can operate on a zip file *or* remote URLs.
 #
 # The cleanup steps are:
-# - parse an HTML string using jsdom
-# - use jQuery to find interesting nodes like links and images
-# - get the bits for the image and store them in the /resources asynchronously
 #
-# cleanupHTML takes 2 functions that are
-#
-module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, linkRenamer, callback) ->
+# 1. parse an HTML string using jsdom
+# 2. use jQuery to find interesting nodes like links and images
+# 3. change links so instead of pointing to resources in the zip they point to published content
+# 4. get the bits for the image and store them in the /resources asynchronously
+cleanupHTML = (html, task, resourceRenamer, linkRenamer, callback) ->
   task.work 'Cleaning up HTML. Parsing...'
   html = html.toString()
-  jsdom.env html, ["#{argv.u}/jquery-latest.js"],
+  # Start up a server-side HTML parser with a DOM
+  jsdom.env html,
     features:
       FetchExternalResources: false # ['img']
       ProcessExternalResources: false
   , (errors, window) ->
     if errors
-      # TODO: The following should be deferred.reject but it's set to "resolve" for the demo
-      #task.fail "Could not generate window.document.body for this HTML"
-      #deferred.reject(new Error("ERROR: This HTML file could not be parsed for some reason."))
       task.work "Could not generate window.document.body for this HTML"
       callback(new Error('Could not generate window.document.body (usually a malformed HTML file'))
 
     errors = null # possibly set one if an error is caught
     newHtml = null
-    promises = [] # Since converting images are asynchronous we use
-                  # Promises to call the callback once all conversions are done
+    promises = [] # Since converting images are asynchronous we use `Q.defer` to call the callback once all conversions are done
     try
       task.work 'Starting clean'
-      $ = window.jQuery
+      # Attach jQuery to the DOM so we can manipulate the HTML
+      $ = require('jQuery').create(window)
       $('script').remove()
-      # $('head').remove() # TODO: look up attribution here
       $('*[style]').removeAttr('style')
 
-      task.work 'Cleaning up links'
       newHrefs = {}
+      # Clean up the links in the HTML
+      task.work 'Cleaning up links'
       $('a[href]').each (i, a) ->
         $el = $(@)
         innerDeferred = Q.defer()
@@ -129,6 +146,8 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
             $el.attr('href', newHref)
           innerDeferred.resolve newHref
 
+      # Change img sources to point to local resources
+      # and issue remote GET requests if they point to remote resources
       $('img[src]').each (i, a) ->
         $el = $(@)
         innerDeferred = Q.defer()
@@ -164,10 +183,11 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
       task.fail error
       errors = error
 
-    # Once all the images and links are converted this cleanup is done
+    # If an error occurred then call the callback with the errors
     if errors
       callback(errors)
     else
+      # Once all the images and links are converted this cleanup is done
       Q.all(promises)
       .then ->
         newHtml = window.document.outerHTML
@@ -175,15 +195,14 @@ module.exports.cleanupHTML = cleanupHTML = (argv, html, task, resourceRenamer, l
         callback(errors, newHtml, newHrefs)
       .end()
 
-
+# ### GET files from remote servers
+# If a URL was provided in the deposit then pull in resources (images not links) it points to
 module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
   getopts = url.parse(remoteUrl)
   task.work "Requesting remote resource #{ url.format(remoteUrl) }"
 
   protocol = if 'https:' == getopts.protocol then https else http
-  # TODO: This needs more robust error handling, just trying to
-  # keep it from taking down the server.
-  protocol.get(getopts, (resp) ->
+  protocol.get(getopts, (resp) -> # TODO: This needs more robust error handling, just trying to keep it from taking down the server.
     responsedata = []
     responseLen = 0
     resp.on('data', (chunk) ->
@@ -217,7 +236,6 @@ module.exports.remoteGet = remoteGet = (remoteUrl, task, callback) ->
 # Used to add to the list of resources available
 newResource = (content, contentType, originalURL) ->
   id = resources.length
-  # Wrapped in array because it's version 0
   resources.push
     content: content
     contentType: contentType
@@ -225,22 +243,10 @@ newResource = (content, contentType, originalURL) ->
   id
 
 
-
-
-# ----------------------------------
-# The asynchronous deposit code
-# ----------------------------------
+# ## Navigation Classes
 #
-# This consists of several helper classes and functions that convert the
-# content so it all points to repository id's
-# and errors otherwise
-
-# ----------------------------
-# Navigation Classes
-# ----------------------------
-
-# These provide a way of navigating a zip or remote URLs
-# Requires remoteGet and the url, path packages
+# These provide a way of navigating a zip or remote URLs and are used by `asyncDeposit()` and `cleanupHtml()`.
+# Depends on `remoteGet()` and the `url` and `path` packages.
 class Context
   getBase: () ->
   goInto: (href) ->
@@ -267,8 +273,8 @@ class PathContext extends Context
   getBase: () -> @basePath
   goInto: (href) ->
     # Local files in the zip can point to:
-    # - other local files
-    # - or to remote files
+    # * other local files
+    # * remote files (retrieved using `remoteGet()`)
     if url.parse(href).protocol
       new UrlContext(@task, url.parse(href))
     else
@@ -279,51 +285,46 @@ class PathContext extends Context
       # Try to get the data asynchronously since it uses native zlib
       # But if we get a bad CRC the async code throws an exception instead of returning the partial data
       # So, in that case, get the data synchronously (something is better than nothing?)
-
-      # The next lines are commented because I apparently can't catch Errors
-      #try
-      #  entry.getDataAsync (data) ->
-      #    callback(not data, data)
-      #catch error
-        console.log "The next line may cause a warning. Something to the effect of CRC32 checksum failed [filename]. Ignore it"
-        data = entry.getData()
-        callback(not data, data)
+      data = entry.getData()
+      callback(not data, data)
     else
       callback('Error: Could not find zip entry', "Error: Could not find zip entry #{@basePath}")
 
-# Helper function that instantiates the correct context based on the href
-# Note: archiveZip could be null
+# Helper function that instantiates the correct context based on the href.
+# *Note:* archiveZip could be null
 makeContext = (promise, href, archiveZip) ->
   contentUrl = url.parse(href)
   if href[0] == '<'
     context = new SingleFileContext(promise, href)
   else if contentUrl.protocol
-    # TODO: Split off the text after the last slash
-    context = new UrlContext(promise, contentUrl)
+    context = new UrlContext(promise, contentUrl) # TODO: Split off the text after the last slash
   else if archiveZip
     # Verify the file exists in the zip
     if not archiveZip.getEntry(contentUrl.pathname)
       promise.fail "Uploaded zip file does not contain a file named #{contentUrl.pathname}"
-    # TODO: Split off the text after the last slash
-    context = new PathContext(promise, archiveZip, contentUrl.pathname)
+    context = new PathContext(promise, archiveZip, contentUrl.pathname) # TODO: Split off the text after the last slash
   else
     promise.fail 'Specified href to content without providing a zip payload or a hostname to pull from'
     context = null
   return context
 
-# ------------------------------
+# ## Asynchronous Deposit
+#
+# This method converts the content so it all points to repository id's
+# and errors otherwise.
+#
 # Given a mapping from published id's to local hrefs into the zip or other public URLs
 # and an optional zip, perform the 'deposit' by:
-# - Converting local links to published id's
-# - Importing images and other resources (from the ZIP or remote URLs)
-# ------------------------------
+#
+# 1. Converting local links to published id's
+# 2. Importing images and other resources (from the ZIP or remote URLs)
 module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
   hrefLookup.each (href) ->
     id = hrefLookup.getId(href)
     # Log that we're doing something on this piece of content
     promise = hrefLookup.getPromise(href)
     context = makeContext(promise, href, archiveZip)
-    # TODO: if context = null then don't bother continuing (already failed the promise)
+    # if context = null then don't bother continuing (already failed the promise)
     return if not context
 
     promise.work('Importing/Cleaning')
@@ -334,21 +335,24 @@ module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
 
     # Convert absolute URLs and relative hrefs into relative hrefs to published content
     #
-    # The outside variables it relies on to work are
-    # - context : for navigating through the zip or remote URLs
-    # - hrefLookup : for knowing how to resolve other new content
-    linkRenamer = (href) ->
+    # The out-of-scope variables it relies on to work are:
+    #
+    # * `context`    : for navigating through the zip or remote URLs
+    # * `hrefLookup` : for knowing how to resolve other new content
+    linkRenamer = (href, callback) ->
       # Links may contain '#id123' at the end of them. Split that off and retain it (TODO: Verify it later)
       [newHref, inPageId] = href.split('#')
+      # If it's a local link don't change it.
       if newHref == ''
-        # It's a local link. Don't change it.
         callback(false, href)
+      # Otherwise look it up in the mapping of all content just deposited so we
+      # can rename the link to point to the published content
       else
         newHref = context.goInto(newHref).getBase()
         # If the href points to content being published (in hrefLookup) then
         # use the id to the published content
-        if newHref of hrefLookup
-          newId = hrefLookup[newHref].id
+        if hrefLookup.has newHref
+          newId = hrefLookup.getId(newHref)
           newHref = "#{newId}"
           newHref += '#' + inPageId if inPageId?
           callback(false, newHref)
@@ -367,16 +371,16 @@ module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
           callback(err, "/resource/#{rid}")
         else
           console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
-          # TODO: Fail at this point, but since test-ccap has missing images let it slide ...
+          # Fail at this point, but since test-ccap has missing images let it slide ...
           callback(err, "Problem loading resource")
 
     # Pull out the file from the zip, clean it up (renaming links and storing images)
     # and then save the file (promise.finish)
     context.getData (err, text, statusCode) ->
       if not err
-        # TODO: Parse the HTML using http://css.dzone.com/articles/transforming-html-nodejs-and
+        # Clean up the HTML (rename links and resources using `linkRenamer` and `resourceRenamer`)
         promise.work('Cleaning up the HTML')
-        cleanupHTML argv, text, promise, resourceRenamer, linkRenamer, (error, cleanHtml) ->
+        cleanupHTML text, promise, resourceRenamer, linkRenamer, (error, cleanHtml) ->
           if error
             promise.fail('Problem in cleanup. Maybe the file is invalid HTML or points to invalid links')
           else
