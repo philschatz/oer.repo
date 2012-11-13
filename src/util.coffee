@@ -33,7 +33,6 @@ module.exports.resources = resources = []
 # `.send()` takes the HTTP Response object and writes either the JSON or the content.
 module.exports.Promise = class Promise extends EventEmitter
   constructor: (prerequisite) ->
-    events.push @
     @status = 'PENDING'
     @created = new Date()
     @history = []
