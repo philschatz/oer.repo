@@ -19,7 +19,6 @@ or the resource itself if processing is complete</p>
 <p><code>.update/finish/fail</code> all update the state as the promise is being worked on
 <code>.send()</code> takes the HTTP Response object and writes either the JSON or the content.</p>             </td>             <td class="code">               <div class="highlight"><pre><span class="nv">module.exports.Promise = </span><span class="k">class</span> <span class="nx">Promise</span> <span class="k">extends</span> <span class="nx">EventEmitter</span>
   <span class="nv">constructor: </span><span class="nf">(prerequisite) -&gt;</span>
-    <span class="nx">events</span><span class="p">.</span><span class="nx">push</span> <span class="nx">@</span>
     <span class="vi">@status = </span><span class="s">&#39;PENDING&#39;</span>
     <span class="vi">@created = </span><span class="k">new</span> <span class="nb">Date</span><span class="p">()</span>
     <span class="vi">@history = </span><span class="p">[]</span>
