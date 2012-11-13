@@ -34,6 +34,29 @@
     <style type="text/css">
 
       .toolbar { position: fixed; top: 0; width: 100%; z-index: 1000;}
+
+      /* Styling for the deposit status bar */
+      .status-footer {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        z-index: 1000;
+      }
+      .status-footer .publish-status {
+        background-color: #eee;
+        border: 1px solid #ccc;
+        opacity: 0.95;
+        padding: 0.5em;
+        font-size: 20px;
+        height: 30px;
+      }
+      .status-footer .publish-status .close { float: left; padding-right: 0.5em; }
+      .status-footer .publish-status .title { float: left; padding-right: 0.5em; }
+      .status-footer .publish-status .status { float: left; padding-left: 0.5em; }
+      .status-footer .publish-status .progress { float: left; }
+      .status-footer .publish-status .bar { height: 100%; }
+
+
       .document { border: 2px solid blue; min-height: 4em; margin: 1em; }
       body { margin-top: 4em; }
 
@@ -262,12 +285,76 @@
       </form>
     </div>
 
-    <div class="monitor"/>
+    <div class="monitor"></div>
+    <div class="status-footer"></div>
 
     <script type="text/javascript">
 //<!--
 
 //$.ready(function() {
+
+var statusFooter = $('.status-footer');
+var makeStatus = function(urls) {
+  // If only 1 element was submitted then make it a JSON object
+  if(urls[0] != '{') {
+    urls = { '': urls };
+  } else {
+    urls = JSON.parse(urls);
+  }
+
+  var $publishStatus = $('<div class="publish-status"><span class="close">&times;</span><strong class="title">Deposit Status </strong><div class="progress progress-striped active"><span class="bar bar-success"> </span><span class="bar bar-danger"></span></div><span class="status"></span></div>').appendTo(statusFooter);
+
+  $publishStatus.find('.close').on('click', function() {
+    $publishStatus.remove();
+  });
+
+  var SCALAR = 5;
+  $publishStatus.find('.progress').width('' + (SCALAR * 100) + 'px');
+
+  var $success = $publishStatus.find('.bar-success');
+  var $error = $publishStatus.find('.bar-danger');
+  var $status = $publishStatus.find('.status');
+  var completed = 0;
+  var success = 0;
+  var errors = 0;
+  var total = Object.keys(urls).length;
+
+  var update = function(title) {
+    var done = (success+errors) < total ? (success+errors) : total;
+    if(done == total) {
+      title = 'Deposit Complete';
+      $publishStatus.find('.progress').removeClass('progress-striped active');
+    }
+    $success.width('' + (success * 100 / total * SCALAR) + 'px');
+    $error.width(  '' + (errors  * 100 / total * SCALAR) + 'px');
+    $status.text('' + done + '/' + total + ' : ' + title);
+  };
+
+  $.each(urls, function(href, url) {
+    var retry = function() {
+      $.ajax(url, {
+        type: 'GET',
+        // Can't use success: because a 202 return code still counts as success
+        //success: function(text, status) { },
+        statusCode: {
+          200: function() {
+            success++;
+            update(href);
+          },
+          202: function() {
+            // Still Pending so retry in 100ms
+            setTimeout(retry, 100);
+          }
+        },
+        error: function(jqXHR, textStatus, errorThrown) {
+          errors++;
+          update(href);
+        }
+      });
+    };
+    retry();
+  });
+};
 
 var monitor = $('.monitor');
 
@@ -308,7 +395,8 @@ $('form:not([enctype="multipart/form-data"]):not(.no-ajax)').each(function(id, f
       type: method,
       data: params,
       success: function(text, status) {
-        alert("Succeeded with message (Check this URL for status): " + text);
+        //alert("Succeeded with message (Check this URL for status): " + text);
+        makeStatus(text);
       },
       statusCode: {
         404: function() {
@@ -359,7 +447,8 @@ $('form[enctype="multipart/form-data"]').each(function(id, form) {
       contentType: false,  // tell jQuery not to set contentType
 
       success: function(text, status) {
-        alert("Succeeded with message (Check this URL for status): " + text);
+        //alert("Succeeded with message (Check this URL for status): " + text);
+        makeStatus(text);
       },
       statusCode: {
         404: function() {
