@@ -71,12 +71,27 @@
 
     </style>
 
-<script type="text/javascript">
-window.Aloha = window.Aloha || {};
-Aloha.settings = Aloha.settings || {};
+  <!-- ============================= -->
+  <!--  Configure MathJax and Aloha  -->
+  <!-- ============================= -->
+  <script src="./Aloha-Editor/src/plugins/extra/math/lib/MathJax.js?config=TeX-MML-AM_HTMLorMML-full&amp;delayStartupUntil=configured"></script>
 
 
-</script>
+  <script type="text/x-mathjax-config">MathJax.Hub.Config({
+    jax: ["input/MathML", "input/TeX", "input/AsciiMath", "output/NativeMML", "output/HTML-CSS"],
+    extensions: ["asciimath2jax.js", "tex2jax.js","mml2jax.js","MathMenu.js","MathZoom.js"],
+    tex2jax: { inlineMath: [["[TEX_START]","[TEX_END]"], ["\\(", "\\)"]] },
+    // Apparently we can't change the escape sequence for ASCIIMath (MathJax doesn't find it)
+    // asciimath2jax: { inlineMath: [["[ASCIIMATH_START]", "[ASCIIMATH_END]"]], },
+
+    // The default for Firefox is "HTML" for some reason so change it to MML
+    MMLorHTML: {prefer:{MSIE:"MML",Firefox:"MML",Opera:"HTML",Chrome:"HTML",Safari:"HTML",other:"HTML"}},
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"], noErrors: { disabled: true }
+    },
+    AsciiMath: { noErrors: { disabled: true } }
+        });
+  </script>
 
 <!-- The first plugins are required but the rest are included for playing around with -->
 <script type="text/javascript" src="./Aloha-Editor/src/lib/require.js"></script>
@@ -460,6 +475,14 @@ Aloha.jQuery('<div />').addClass('toolbar').prependTo(header);
 
 // Once Aloha has loaded, bind it all
 Aloha.ready(function() {
+
+      // Wait until Aloha is started before loading MathJax
+      // Also, wrap all math in a span/div. MathJax replaces the MathJax element
+      // losing all jQuery data attached to it (like popover data, the original Math Formula, etc)
+      // add aloha-cleanme so this span is unwrapped
+      jQuery('math').wrap('<span class="math-element aloha-cleanme"></span>')
+      MathJax.Hub.Configured();
+
 
   var edits = ['<div><p>Hello there!</p><p>You can enter any HTML in here.</p><h1>Heading1</h1><h3>Heading 3</h3><ul><li>Lists supported</li><li><ol><li>And sublists</li></ol></li><p>Lists <b>and</b> <i>multiple</i> lines, <sub>subscripts</sub>, <q>quotes</q>, <a href="http://cnx.org">links</a>!</p></div>', '<div>Insert Some other HTML here</div>']
   var editIndex = 0;
