@@ -34,6 +34,29 @@
     <style type="text/css">
 
       .toolbar { position: fixed; top: 0; width: 100%; z-index: 1000;}
+
+      /* Styling for the deposit status bar */
+      .status-footer {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        z-index: 1000;
+      }
+      .status-footer .publish-status {
+        background-color: #eee;
+        border: 1px solid #ccc;
+        opacity: 0.95;
+        padding: 0.5em;
+        font-size: 20px;
+        height: 30px;
+      }
+      .status-footer .publish-status .close { float: left; padding-right: 0.5em; }
+      .status-footer .publish-status .title { float: left; padding-right: 0.5em; }
+      .status-footer .publish-status .status { float: left; padding-left: 0.5em; }
+      .status-footer .publish-status .progress { float: left; }
+      .status-footer .publish-status .bar { height: 100%; }
+
+
       .document { border: 2px solid blue; min-height: 4em; margin: 1em; }
       body { margin-top: 4em; }
 
@@ -71,12 +94,27 @@
 
     </style>
 
-<script type="text/javascript">
-window.Aloha = window.Aloha || {};
-Aloha.settings = Aloha.settings || {};
+  <!-- ============================= -->
+  <!--  Configure MathJax and Aloha  -->
+  <!-- ============================= -->
+  <script src="./Aloha-Editor/src/plugins/extra/math/lib/MathJax.js?config=TeX-MML-AM_HTMLorMML-full&amp;delayStartupUntil=configured"></script>
 
 
-</script>
+  <script type="text/x-mathjax-config">MathJax.Hub.Config({
+    jax: ["input/MathML", "input/TeX", "input/AsciiMath", "output/NativeMML", "output/HTML-CSS"],
+    extensions: ["asciimath2jax.js", "tex2jax.js","mml2jax.js","MathMenu.js","MathZoom.js"],
+    tex2jax: { inlineMath: [["[TEX_START]","[TEX_END]"], ["\\(", "\\)"]] },
+    // Apparently we can't change the escape sequence for ASCIIMath (MathJax doesn't find it)
+    // asciimath2jax: { inlineMath: [["[ASCIIMATH_START]", "[ASCIIMATH_END]"]], },
+
+    // The default for Firefox is "HTML" for some reason so change it to MML
+    MMLorHTML: {prefer:{MSIE:"MML",Firefox:"MML",Opera:"HTML",Chrome:"HTML",Safari:"HTML",other:"HTML"}},
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"], noErrors: { disabled: true }
+    },
+    AsciiMath: { noErrors: { disabled: true } }
+        });
+  </script>
 
 <!-- The first plugins are required but the rest are included for playing around with -->
 <script type="text/javascript" src="./Aloha-Editor/src/lib/require.js"></script>
@@ -247,12 +285,76 @@ Aloha.settings = Aloha.settings || {};
       </form>
     </div>
 
-    <div class="monitor"/>
+    <div class="monitor"></div>
+    <div class="status-footer"></div>
 
     <script type="text/javascript">
 //<!--
 
 //$.ready(function() {
+
+var statusFooter = $('.status-footer');
+var makeStatus = function(urls) {
+  // If only 1 element was submitted then make it a JSON object
+  if(urls[0] != '{') {
+    urls = { '': urls };
+  } else {
+    urls = JSON.parse(urls);
+  }
+
+  var $publishStatus = $('<div class="publish-status"><span class="close">&times;</span><strong class="title">Deposit Status </strong><div class="progress progress-striped active"><span class="bar bar-success"> </span><span class="bar bar-danger"></span></div><span class="status"></span></div>').appendTo(statusFooter);
+
+  $publishStatus.find('.close').on('click', function() {
+    $publishStatus.remove();
+  });
+
+  var SCALAR = 5;
+  $publishStatus.find('.progress').width('' + (SCALAR * 100) + 'px');
+
+  var $success = $publishStatus.find('.bar-success');
+  var $error = $publishStatus.find('.bar-danger');
+  var $status = $publishStatus.find('.status');
+  var completed = 0;
+  var success = 0;
+  var errors = 0;
+  var total = Object.keys(urls).length;
+
+  var update = function(title) {
+    var done = (success+errors) < total ? (success+errors) : total;
+    if(done == total) {
+      title = 'Deposit Complete';
+      $publishStatus.find('.progress').removeClass('progress-striped active');
+    }
+    $success.width('' + (success * 100 / total * SCALAR) + 'px');
+    $error.width(  '' + (errors  * 100 / total * SCALAR) + 'px');
+    $status.text('' + done + '/' + total + ' : ' + title);
+  };
+
+  $.each(urls, function(href, url) {
+    var retry = function() {
+      $.ajax(url, {
+        type: 'GET',
+        // Can't use success: because a 202 return code still counts as success
+        //success: function(text, status) { },
+        statusCode: {
+          200: function() {
+            success++;
+            update(href);
+          },
+          202: function() {
+            // Still Pending so retry in 100ms
+            setTimeout(retry, 100);
+          }
+        },
+        error: function(jqXHR, textStatus, errorThrown) {
+          errors++;
+          update(href);
+        }
+      });
+    };
+    retry();
+  });
+};
 
 var monitor = $('.monitor');
 
@@ -293,7 +395,8 @@ $('form:not([enctype="multipart/form-data"]):not(.no-ajax)').each(function(id, f
       type: method,
       data: params,
       success: function(text, status) {
-        alert("Succeeded with message (Check this URL for status): " + text);
+        //alert("Succeeded with message (Check this URL for status): " + text);
+        makeStatus(text);
       },
       statusCode: {
         404: function() {
@@ -344,7 +447,8 @@ $('form[enctype="multipart/form-data"]').each(function(id, form) {
       contentType: false,  // tell jQuery not to set contentType
 
       success: function(text, status) {
-        alert("Succeeded with message (Check this URL for status): " + text);
+        //alert("Succeeded with message (Check this URL for status): " + text);
+        makeStatus(text);
       },
       statusCode: {
         404: function() {
@@ -460,6 +564,14 @@ Aloha.jQuery('<div />').addClass('toolbar').prependTo(header);
 
 // Once Aloha has loaded, bind it all
 Aloha.ready(function() {
+
+      // Wait until Aloha is started before loading MathJax
+      // Also, wrap all math in a span/div. MathJax replaces the MathJax element
+      // losing all jQuery data attached to it (like popover data, the original Math Formula, etc)
+      // add aloha-cleanme so this span is unwrapped
+      jQuery('math').wrap('<span class="math-element aloha-cleanme"></span>')
+      MathJax.Hub.Configured();
+
 
   var edits = ['<div><p>Hello there!</p><p>You can enter any HTML in here.</p><h1>Heading1</h1><h3>Heading 3</h3><ul><li>Lists supported</li><li><ol><li>And sublists</li></ol></li><p>Lists <b>and</b> <i>multiple</i> lines, <sub>subscripts</sub>, <q>quotes</q>, <a href="http://cnx.org">links</a>!</p></div>', '<div>Insert Some other HTML here</div>']
   var editIndex = 0;

@@ -290,7 +290,7 @@ module.exports = exports = (argv) ->
     hrefLookup.each (href, value) ->
       id = value.id
       ver = value.ver
-      ret[href] = "/#{ CONTENT }/#{id}@#{ver}"
+      ret[href] = "/#{CONTENT}/#{id}@#{ver}"
 
     # Return a href -> id@ver dictionary of everything submitted
     # Shortcut if only 1 piece of content was sent
@@ -301,7 +301,7 @@ module.exports = exports = (argv) ->
   ) # END app.post('/deposit'
 
   # Return JSON of all the content in the repo
-  app.get("/#{ CONTENT }/", (req, res) ->
+  app.get("/#{CONTENT}/", (req, res) ->
     # Build up a little map of all the promises (tasks)
     tasks = []
     for c in content
@@ -315,7 +315,7 @@ module.exports = exports = (argv) ->
   )
 
   # Return a single piece of content
-  app.get("/#{ CONTENT }/:id([0-9]+)(@:ver([0-9]+))?", (req, res) ->
+  app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?", (req, res) ->
     id = req.params.id
     ver = req.param('ver', "@#{content[id].versions.length - 1}")
     ver = ver[1..ver.length] # split off the '@' character
@@ -323,7 +323,7 @@ module.exports = exports = (argv) ->
     body.send(res)
   )
   # Return metadata for a single piece of content
-  app.get("/#{ CONTENT }/:id([0-9]+)(@:ver([0-9]+))?.json", (req, res) ->
+  app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?.json", (req, res) ->
     id = req.params.id
     ver = req.param('ver', "@#{content[id].length - 1}")
     ver = ver[1..ver.length] # split off the '@' character
