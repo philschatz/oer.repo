@@ -1,0 +1,50 @@
+<!DOCTYPE html>  <html> <head>   <title>cli.coffee</title>   <meta http-equiv="content-type" content="text/html; charset=UTF-8">   <link rel="stylesheet" media="all" href="docco.css" /> </head> <body>   <div id="container">     <div id="background"></div>            <div id="jump_to">         Jump To &hellip;         <div id="jump_wrapper">           <div id="jump_page">                                           <a class="source" href="cli.html">                 cli.coffee               </a>                                           <a class="source" href="defaultargs.html">                 defaultargs.coffee               </a>                                           <a class="source" href="server.html">                 server.coffee               </a>                                           <a class="source" href="util.html">                 util.coffee               </a>                        </div>         </div>       </div>          <table cellpadding="0" cellspacing="0">       <thead>         <tr>           <th class="docs">             <h1>               cli.coffee             </h1>           </th>           <th class="code">           </th>         </tr>       </thead>       <tbody>                               <tr id="section-1">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-1">&#182;</a>               </div>               <p>Cli for the mock express server</p>             </td>             <td class="code">               <div class="highlight"><pre><span class="nv">path = </span><span class="nx">require</span> <span class="s">&#39;path&#39;</span>
+<span class="nv">optimist = </span><span class="nx">require</span> <span class="s">&#39;optimist&#39;</span>
+<span class="nv">server = </span><span class="nx">require</span> <span class="s">&#39;./server&#39;</span></pre></div>             </td>           </tr>                               <tr id="section-2">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-2">&#182;</a>               </div>               <p>Handle command line options</p>             </td>             <td class="code">               <div class="highlight"><pre><span class="nv">argv = </span><span class="nx">optimist</span>
+  <span class="p">.</span><span class="nx">usage</span><span class="p">(</span><span class="s">&#39;Usage: $0&#39;</span><span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;h&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;help&#39;</span>
+    <span class="nv">boolean   : </span><span class="kc">true</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Show this help info and exit&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;o&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;host&#39;</span>
+    <span class="nv">default   : </span><span class="s">&#39;&#39;</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Host to accept connections on, false == any&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;u&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;url&#39;</span>
+    <span class="nv">default   : </span><span class="s">&#39;&#39;</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Url to be used for the realm in openID&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;p&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;port&#39;</span>
+    <span class="nv">default   : </span><span class="mi">3000</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Port&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;r&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;root&#39;</span>
+    <span class="nv">default   : </span><span class="nx">path</span><span class="p">.</span><span class="nx">join</span><span class="p">(</span><span class="nx">__dirname</span><span class="p">)</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Application root folder&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;g&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;pdfgen-url&#39;</span>
+    <span class="nv">default   : </span><span class="s">&#39;&#39;</span>
+    <span class="nv">describe  : </span><span class="s">&#39;URL to the PDF generation service (accepts /deposit)&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;x&#39;</span><span class="p">,</span>
+    <span class="nv">alias     : </span><span class="s">&#39;debug-user&#39;</span>
+    <span class="nv">boolean   : </span><span class="kc">true</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Set this flag if you do not want to have to authenticate&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">options</span><span class="p">(</span><span class="s">&#39;test&#39;</span><span class="p">,</span>
+    <span class="nv">boolean   : </span><span class="kc">true</span>
+    <span class="nv">describe  : </span><span class="s">&#39;Set server to work with the rspec integration tests&#39;</span>
+  <span class="p">)</span>
+  <span class="p">.</span><span class="nx">argv</span></pre></div>             </td>           </tr>                               <tr id="section-3">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-3">&#182;</a>               </div>               <p>If h/help is set print the generated help message and exit.</p>             </td>             <td class="code">               <div class="highlight"><pre><span class="k">if</span> <span class="nx">argv</span><span class="p">.</span><span class="nx">h</span>
+  <span class="nx">optimist</span><span class="p">.</span><span class="nx">showHelp</span><span class="p">()</span>
+  <span class="nx">process</span><span class="p">.</span><span class="nx">exit</span><span class="p">()</span>
+
+<span class="nx">server</span><span class="p">(</span><span class="nx">argv</span><span class="p">)</span>
+
+</pre></div>             </td>           </tr>                </tbody>     </table>   </div> </body> </html> 
