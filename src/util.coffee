@@ -32,20 +32,15 @@ module.exports.resources = resources = []
 # `.update/finish/fail` all update the state as the promise is being worked on
 # `.send()` takes the HTTP Response object and writes either the JSON or the content.
 module.exports.Promise = class Promise extends EventEmitter
-  constructor: (prerequisite) ->
+  constructor: () ->
     @status = 'PENDING'
     @created = new Date()
     @history = []
     @isProcessing = true
     @data = null
-    if prerequisite?
-      that = @
-      prerequisite.on 'update', (msg) -> that.update "Prerequisite update: #{msg}"
-      prerequisite.on 'fail', () ->
-        that.update 'Prerequisite task failed'
-        that.fail()
-      prerequisite.on 'finish', (_, mimeType) -> that.update "Prerequisite finished generating object with mime-type=#{mimeType}"
 
+  isFinished: () ->
+    return not @isProcessing and @data
   # Send either the data (if available), or a HTTP Status with this JSON
   send: (res) ->
     if @isProcessing
@@ -365,9 +360,13 @@ module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
     resourceRenamer = (href, contentType, callback) ->
       context.goInto(href).getData (err, content) ->
         if not err
-          # "Import" the resource
-          rid = newResource(content, contentType, context.goInto(href).getBase())
-          callback(err, "/resource/#{rid}")
+          # If the user is just saving a file and the resource is already local don't re-upload
+          if context instanceof SingleFileContext and /^\/resource\//.test href
+            callback(err, href)
+          # Otherwise "Import" the resource
+          else
+            rid = newResource(content, contentType, context.goInto(href).getBase())
+            callback(err, "/resource/#{rid}")
         else
           console.warn "Error depositing resource because of status=#{err} (Probably missing file)"
           # Fail at this point, but since test-ccap has missing images let it slide ...

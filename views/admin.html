@@ -23,8 +23,8 @@
 <script type="text/javascript" src="./twitter-bootstrap/js/bootstrap-tab.js"></script>
 <script type="text/javascript" src="./twitter-bootstrap/js/bootstrap-transition.js"></script>
 <script type="text/javascript" src="./twitter-bootstrap/js/bootstrap-typeahead.js"></script>
-<link rel="stylesheet" href="./Aloha-Editor/bootstrap/css/bootstrap.css"/>
-<link rel="stylesheet" href="./Aloha-Editor/bootstrap/css/bootstrap-responsive.css"/>
+<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap-responsive.css" type="text/css"/>
 
 
   <!-- These CSS/javascript files depend on where Aloha is located -->
@@ -70,7 +70,7 @@
         font-family: sans-serif;
       }
       h2::before { content: counter(step-number) ". "; color: #ccc; }
-      textarea { width: 25em; height: 10em; }
+      textarea { width: 25em; min-height: 2em; }
       abbr { white-space: nowrap; }
 
       .monitor,
@@ -83,14 +83,6 @@
         background-color: white;
         box-shadow: 10px 11px 44px rgba(0, 0, 0, 0.35), inset 0px 0px 1px rgba(255, 255, 255, 0.15);
       }
-
-      th        { color: #666; }
-      .PENDING  { background-color: #66f; }
-      .WORKING  { }
-      .PAUSED   { background-color: #ccc; }
-      .FINISHED { color: #ccc; }
-      .FINISHED td:first-child { background-color: #cc6; }
-      .FAILED   { background-color: #c66; }
 
     </style>
 
@@ -294,7 +286,8 @@
 //$.ready(function() {
 
 var statusFooter = $('.status-footer');
-var makeStatus = function(urls) {
+
+var makeDeposit = function(urls) {
   // If only 1 element was submitted then make it a JSON object
   if(urls[0] != '{') {
     urls = { '': urls };
@@ -396,7 +389,7 @@ $('form:not([enctype="multipart/form-data"]):not(.no-ajax)').each(function(id, f
       data: params,
       success: function(text, status) {
         //alert("Succeeded with message (Check this URL for status): " + text);
-        makeStatus(text);
+        makeDeposit(text);
       },
       statusCode: {
         404: function() {
@@ -448,7 +441,7 @@ $('form[enctype="multipart/form-data"]').each(function(id, form) {
 
       success: function(text, status) {
         //alert("Succeeded with message (Check this URL for status): " + text);
-        makeStatus(text);
+        makeDeposit(text);
       },
       statusCode: {
         404: function() {
@@ -477,7 +470,8 @@ tick = function() {
       var row = $('<tr/>').appendTo(table);
 
       var ROW_STYLES = {
-        FINISHED: 'success',
+        //FINISHED: 'success',
+        FINISHED: '',
         FAILED: 'error',
         WORKING: '',
         PAUSED: 'info',

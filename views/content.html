@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>oerpub.repo Admin Console</title>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+    <meta content='width=device-width, height=device-height, initial-scale=1.0, user-scalable=no' name='viewport'>
+<!--
+    <script src='http://code.jquery.com/jquery-latest.js' type='text/javascript'></script>
+-->
+<script type="text/javascript">/*Hack to use the jquery.js file in jquery-component*/var module={};</script>
+<script type="text/javascript" src="../jquery-component/dist/jquery.js"></script>
+
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-affix.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-alert.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-button.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-carousel.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-collapse.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-dropdown.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-modal.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-tooltip.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-popover.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-scrollspy.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-tab.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-transition.js"></script>
+<script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-typeahead.js"></script>
+<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap-responsive.css" type="text/css"/>
+
+
+  <!-- These CSS/javascript files depend on where Aloha is located -->
+	<link rel="stylesheet" type="text/css" href="../Aloha-Editor/src/css/aloha.css" />
+  <link rel="stylesheet" type="text/css" href="../Aloha-Editor/cnx.css" />
+
+    <style type="text/css">
+body > .navbar button {
+padding-right: 0;
+padding-left: 0;
+margin-left: 20px;
+float: right;
+font-weight: bold;
+text-shadow: 0 1px 0 rgba(255,255,255,.1), 0 0 30px rgba(255,255,255,.125);
+}
+      .toolbar { position: fixed; top: 0; width: 100%; z-index: 1000;}
+
+      /* Styling for the deposit status bar */
+      .status-footer {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        z-index: 1000;
+      }
+      .status-footer .publish-status {
+        background-color: #eee;
+        border: 1px solid #ccc;
+        opacity: 0.95;
+        padding: 0.5em;
+        font-size: 20px;
+        height: 30px;
+      }
+      .status-footer .publish-status .close { float: left; padding-right: 0.5em; }
+      .status-footer .publish-status .title { float: left; padding-right: 0.5em; }
+      .status-footer .publish-status .status { float: left; padding-left: 0.5em; }
+      .status-footer .publish-status .progress { float: left; }
+      .status-footer .publish-status .bar { height: 100%; }
+
+
+      body { margin-top: 4em; }
+
+      textarea { width: 25em; min-height: 2em; }
+      abbr { white-space: nowrap; }
+
+      .monitor,
+      .login,
+      .create, .update,
+      .deposit {
+        float: left;
+        margin: 0.5em;
+        padding: 0.5em;
+        background-color: white;
+        box-shadow: 10px 11px 44px rgba(0, 0, 0, 0.35), inset 0px 0px 1px rgba(255, 255, 255, 0.15);
+      }
+
+    </style>
+
+  <!-- ============================= -->
+  <!--  Configure MathJax and Aloha  -->
+  <!-- ============================= -->
+    <script src="http://cdn.mathjax.org/mathjax/2.0-latest/MathJax.js?config=TeX-MML-AM_HTMLorMML-full&amp;delayStartupUntil=configured"></script>
+
+
+
+  <script type="text/x-mathjax-config">MathJax.Hub.Config({
+    jax: ["input/MathML", "input/TeX", "input/AsciiMath", "output/NativeMML", "output/HTML-CSS"],
+    extensions: ["asciimath2jax.js", "tex2jax.js","mml2jax.js","MathMenu.js","MathZoom.js"],
+    tex2jax: { inlineMath: [["[TEX_START]","[TEX_END]"], ["\\(", "\\)"]] },
+    // Apparently we can't change the escape sequence for ASCIIMath (MathJax doesn't find it)
+    // asciimath2jax: { inlineMath: [["[ASCIIMATH_START]", "[ASCIIMATH_END]"]], },
+
+    // The default for Firefox is "HTML" for some reason so change it to MML
+    MMLorHTML: {prefer:{MSIE:"MML",Firefox:"MML",Opera:"HTML",Chrome:"HTML",Safari:"HTML",other:"HTML"}},
+    TeX: {
+      extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"], noErrors: { disabled: true }
+    },
+    AsciiMath: { noErrors: { disabled: true } }
+        });
+  </script>
+
+<!-- The first plugins are required but the rest are included for playing around with -->
+<script type="text/javascript" src="../Aloha-Editor/src/lib/require.js"></script>
+  <script type="text/javascript">
+    Aloha = window.Aloha || {};
+
+    Aloha.settings = {
+      jQuery: window.jQuery,
+      logLevels: {'error': true, 'warn': true, 'info': false, 'debug': false},
+      errorhandling : true,
+
+      plugins: {
+        // This whole thing is what's needed to:
+        // - set a custom URL to send files to
+        // - register a callback that updates the IMG with the new src
+        draganddropfiles: {
+          upload: {
+            config: {
+              method: "POST",
+              url: "/resource",
+              fieldName: 'data',
+              send_multipart_form: true,
+              callback: function(resp) {
+                // If the response is a URL then change the Image source to it
+                // The URL could be absolute (/^http/) or relative (/\// or [a-z])
+                if (resp.match(/^http/) || resp.match(/^\//) || resp.match(/^[a-z]/) ) {
+                } else {
+                  alert('You dropped a file and we sent a message to the server to do something with it.\nIt responded with some gibberish so we are showing you some other file to show it worked');
+                  resp = "src/test/AlohaEditorLogo.png";
+                }
+
+                /* Drag and Drop creates an <img id="{this.id}"> element but the
+                 * "New Image" plugin doesn't have access to the UploadFile object (this)
+                 * so all it can do is add a class.
+                 * If I combine both then we can set the attribute consistently.
+                 * FIXME: Don't assume only 1 image can be uploaded at a time
+                 */
+                $img = Aloha.jQuery('.aloha-image-uploading').add('#' + this.id);
+                $img.attr('src', resp);
+                $img.removeClass('aloha-image-uploading');
+                console.log('Updated Image src as a result of upload');
+              }
+            }
+          }
+        },
+        block: {
+          defaults : {
+            '.default-block': {
+            },
+            'figure': {
+              'aloha-block-type': 'EditableImageBlock'
+            },
+          }
+        }
+      },
+      bundles: {
+        // Path for custom bundle relative from require.js path
+        user: '../demo/block'
+      }
+    };
+
+  </script>
+
+  </head>
+  <body>
+    <div class="content">
+      {{{_body}}}
+    </div>
+  </body>
+
+    <script src="../Aloha-Editor/src/lib/aloha.js" data-aloha-plugins="
+    oer/toolbar,
+    common/ui,
+    common/format,
+    common/paste,
+    common/block,
+    common/list,
+    common/table,
+    extra/draganddropfiles,
+    common/image,
+    cnx/popover,
+    cnx/math,
+    cnx/assorted
+  "></script>
+
+  <script>
+
+    // Load the toolbar from the HTML file and put it right before the document
+    // This doesn't need to be in Aloha.ready... it could be in jQuery().ready
+    jQuery('<div class="toolbar-menu hidden"></div>').prependTo('body').load('../Aloha-Editor/cnx-toolbar.html').children().unwrap();
+
+var header = Aloha.jQuery('<div class="navbar navbar-inverse navbar-fixed-top"><div class="navbar-inner"><div class="container"><button class="btn btn-primary hidden edit">&nbsp;Edit&nbsp;</button><ul class="nav"><li><a href="/">Home</a></li><li><a href="/about">About Us</a></li></ul></div></div></div>');
+header.prependTo('body');
+Aloha.jQuery('<div />').addClass('menubar').prependTo(header);
+Aloha.jQuery('<div />').addClass('toolbar').prependTo(header);
+
+var publishModal = jQuery('<form class="publishing modal hide fade" id="publishingModal" tabindex="-1" role="dialog" aria-labelledby="publishingModalLabel" aria-hidden="true">' +
+  '    <div class="modal-header">' +
+  '      <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>' +
+  '      <h3>Publishing</h3>' +
+  '    </div>' +
+  '     <div class="progress progress-striped active" rel="tooltip" title="#"><div class="bar"></div></div>' +
+  '</form>').appendTo('body');
+
+
+// Once Aloha has loaded, bind it all
+Aloha.ready(function() {
+
+  var edit = header.find('.edit');
+  var publish = jQuery('<button class="btn btn-primary publish">&nbsp;Publish&nbsp;</button>');
+  var cancel = jQuery('<button class="btn cancel">&nbsp;Cancel&nbsp;</button>');
+
+  var toolbarDiv = jQuery('.toolbar-menu');
+  var ops = jQuery('<div class="btn-group"></div>').prependTo(toolbarDiv.find('.btn-toolbar'));
+  ops.append(publish);
+  ops.append(cancel);
+
+  var editing = toolbarDiv;
+
+  var content = Aloha.jQuery('.content');
+
+  var squirreledHTML = null; // if the user hits cancel
+  edit.removeClass('hidden');
+  edit.on('click', function() {
+    header.addClass('hidden');
+    editing.removeClass('hidden');
+
+    squirreledHTML = content[0].innerHTML;
+    content.aloha();
+    content.focus();
+  });
+  cancel.on('click', function() {
+    header.removeClass('hidden');
+    editing.addClass('hidden');
+
+    content.mahalo();
+    content.html(squirreledHTML);
+  });
+  publish.on('click', function() {
+    var id = window.location.href.split('/')[window.location.href.split('/').length-1];
+    var params = {};
+    params[id] = content.html().trim();
+    jQuery.ajax('/deposit', {
+      type: 'POST',
+      data: params,
+    }).done(function(data){
+      //shortcut. just emulate cancel
+      cancel.trigger('click');
+
+      // Poll and show a progress bar
+      var pollTimer = setInterval(function() {
+        jQuery.ajax(data, {
+          type: 'GET',
+          statusCode: {
+            200: function(data) {
+              publishModal.modal('hide');
+              //jQuery strips out the <html>, <head>, and <body> tags
+              // and jQuery(data).find('.content') doesn't seem to work
+              // so we find a div and then find the top ancestor
+              var contentHack = jQuery(data).find('div,span,p,img,a').first().parents().last();
+              content.html(contentHack.contents());
+              clearInterval(pollTimer);
+            },
+            202: function(data) {
+              var progressBar = publishModal.find('.progress .bar');
+              publishModal.modal('show');
+              percent = 100;// * data.progress.finished / data.progress.total;
+              progressBar.width(percent + '%');
+            },
+            404: function() {
+              publishModal.modal('hide');
+              clearInterval(pollTimer);
+              alert("There was a problem publishing. maybe you don't have access (this should have been a DERIVE or something else went wrong.");
+            }
+          }
+        });
+
+      }, 100);
+    });
+  });
+
+  // Wait until Aloha is started before loading MathJax
+  // Also, wrap all math in a span/div. MathJax replaces the MathJax element
+  // losing all jQuery data attached to it (like popover data, the original Math Formula, etc)
+  // add aloha-cleanme so this span is unwrapped
+  jQuery('math').wrap('<span class="math-element aloha-cleanme"></span>')
+  MathJax.Hub.Configured();
+
+});
+
+  </script>
+
+</html>

@@ -136,6 +136,8 @@ module.exports = exports = (argv) ->
 
   # The prefix for "published" content (ie "/content/1234")
   CONTENT = 'content'
+  # Handlebar template for rendering a single piece of content
+  CONTENT_TEMPLATE = 'content.html'
 
   # ## Deposit Content
   # Deposit either a new piece of content (>=1) or new versions of existing content
@@ -320,7 +322,10 @@ module.exports = exports = (argv) ->
     ver = req.param('ver', "@#{content[id].versions.length - 1}")
     ver = ver[1..ver.length] # split off the '@' character
     body = content[id].versions[ver] # .body is a Promise
-    body.send(res)
+    if body.isFinished()
+      res.render CONTENT_TEMPLATE, {_body:body.data}
+    else
+      body.send(res)
   )
   # Return metadata for a single piece of content
   app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?.json", (req, res) ->
@@ -329,6 +334,22 @@ module.exports = exports = (argv) ->
     ver = ver[1..ver.length] # split off the '@' character
     body = content[id][ver].body # .body is a Promise
     res.send(body)
+  )
+
+
+  app.post('/resource', authenticated, (req, res) ->
+    dataFile = req.files['data']
+    id = resources.length
+    resource =
+      contentType: dataFile.type
+      content: null
+      originalURL: null
+    resources.push resource
+
+    data = fs.readFileSync dataFile.path
+    resource.content = data
+
+    res.send "/resource/#{id}"
   )
 
   # Return imported resource like an image or CSS
