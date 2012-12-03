@@ -23,8 +23,7 @@
 <script type="text/javascript" src="./twitter-bootstrap/js/bootstrap-tab.js"></script>
 <script type="text/javascript" src="./twitter-bootstrap/js/bootstrap-transition.js"></script>
 <script type="text/javascript" src="./twitter-bootstrap/js/bootstrap-typeahead.js"></script>
-<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap.css" type="text/css"/>
-<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap-responsive.css" type="text/css"/>
+<link rel="stylesheet" href="bootstrap.css" type="text/css"/>
 
 
   <!-- These CSS/javascript files depend on where Aloha is located -->
@@ -160,21 +159,18 @@
 
   </script>
     <script src="./Aloha-Editor/src/lib/aloha.js" data-aloha-plugins="
-    extra/toolbar,
+    oer/toolbar,
     common/ui,
     common/format,
     common/paste,
     common/block,
-    user/blockdemo,
     common/list,
     common/table,
     extra/draganddropfiles,
     common/image,
-    oerpub/popover,
-    oerpub/math,
-    oerpub/assorted,
-    oerpub/oerui,
-    oerpub/image
+    cnx/popover,
+    cnx/math,
+    cnx/assorted
   "></script>
 
   </head>
@@ -206,13 +202,9 @@
       <form action="/deposit" method="POST">
         <p>Resource body (the HTML):</p>
         <textarea name="new">
-&lt;html&gt;
-  &lt;body&gt;
     &lt;p&gt;Hello there! I really like
       &lt;a href="http://cnx.org"&gt;Connexions&lt;/a&gt;
     &lt;/p&gt;
-  &lt;/body&gt;
-&lt;/html&gt;
         </textarea>
         <div>
           <button class="btn btn-primary" type="submit">Commit!</button>
@@ -564,7 +556,7 @@ Aloha.ready(function() {
       // losing all jQuery data attached to it (like popover data, the original Math Formula, etc)
       // add aloha-cleanme so this span is unwrapped
       jQuery('math').wrap('<span class="math-element aloha-cleanme"></span>')
-      MathJax.Hub.Configured();
+      if(window.MathJax) { MathJax.Hub.Configured(); }
 
 
   var edits = ['<div><p>Hello there!</p><p>You can enter any HTML in here.</p><h1>Heading1</h1><h3>Heading 3</h3><ul><li>Lists supported</li><li><ol><li>And sublists</li></ol></li><p>Lists <b>and</b> <i>multiple</i> lines, <sub>subscripts</sub>, <q>quotes</q>, <a href="http://cnx.org">links</a>!</p></div>', '<div>Insert Some other HTML here</div>']
@@ -579,7 +571,7 @@ Aloha.ready(function() {
     var edit = Aloha.jQuery(edits[editIndex++ % edits.length]).addClass('document').insertAfter($el).aloha();
 
     setInterval(function() {
-      $el.val('<html><body>' + edit.html().trim() + '</body></html>');
+      $el.val(edit.html().trim());
     }, 1000);
   }); // End texts.each
 }); // End Aloha.ready

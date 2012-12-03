@@ -19,6 +19,7 @@ module.exports = exports = (argv) ->
   Promise     = require('./util').Promise
   remoteGet   = require('./util').remoteGet
   asyncDeposit = require('./util').asyncDeposit
+  spawnGeneratePDF = require('./util').spawnGeneratePDF
 
   # ## State
   # Stores state in-memory in these arrays
@@ -104,7 +105,8 @@ module.exports = exports = (argv) ->
     app.use(app.router)
     app.use(express.static(argv.c))
     # Load static files from node_modules (bootstrap, jquery, Aloha, ...)
-    app.use(express.static(path.join(__dirname, '..', '/node_modules')))
+    app.use(express.static(path.join(__dirname, '..', 'node_modules')))
+    app.use(express.static(path.join(__dirname, '..', 'static')))
   )
 
   # ## Set up standard environments.
@@ -129,7 +131,8 @@ module.exports = exports = (argv) ->
 
   # ## Admin Page
   app.get('/', (req, res) ->
-    res.render('admin.html', {}) # {} is vars
+    #res.render('admin.html', {}) # {} is vars
+    res.redirect('admin.html')
   )
 
   # ## POST routes
@@ -285,7 +288,7 @@ module.exports = exports = (argv) ->
     # Fire off a worker and return the list of id's and versions
     # so the user can monitor the progress of publishing their set of content
 
-    setTimeout (-> asyncDeposit(argv, hrefLookup, archiveZip)), 10
+    setTimeout (-> asyncDeposit(requestPDF, hrefLookup, archiveZip)), 10
 
     # Return a mapping of uploaded URL/hrefs to content URLs
     ret = {}
@@ -316,24 +319,33 @@ module.exports = exports = (argv) ->
     res.send tasks
   )
 
-  # Return a single piece of content
-  app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?", (req, res) ->
+  # Helper function that takes request parameters and returns the Promise for a
+  # piece of content or NULL if the content does not exist
+  getContentPromise = (req) ->
     id = req.params.id
     ver = req.param('ver', "@#{content[id].versions.length - 1}")
     ver = ver[1..ver.length] # split off the '@' character
-    body = content[id].versions[ver] # .body is a Promise
-    if body.isFinished()
-      res.render CONTENT_TEMPLATE, {_body:body.data}
+    promise = content[id].versions[ver] # is a Promise
+    return promise
+
+  # Return a single piece of content
+  app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?", (req, res) ->
+    promise = getContentPromise(req)
+    if promise.isFinished()
+      res.header 'Access-Control-Allow-Origin', '*'
+      res.render CONTENT_TEMPLATE, {_body:promise.data}
     else
-      body.send(res)
+      promise.send(res)
   )
   # Return metadata for a single piece of content
   app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?.json", (req, res) ->
-    id = req.params.id
-    ver = req.param('ver', "@#{content[id].length - 1}")
-    ver = ver[1..ver.length] # split off the '@' character
-    body = content[id][ver].body # .body is a Promise
-    res.send(body)
+    promise = getContentPromise(req)
+    res.send(JSON.parse(promise.toString()))
+  )
+
+  app.get("/#{CONTENT}/:id([0-9]+)(@:ver([0-9]+))?.exports", (req, res) ->
+    promise = getContentPromise(req)
+    res.send(promise.exports or {})
   )
 
 
@@ -360,6 +372,79 @@ module.exports = exports = (argv) ->
     resource = resources[id]
     res.contentType resource.contentType
     res.send resource.content
+  )
+
+  # # In-memory "database"
+  # This contains a list of `Promise`s
+  #
+  # * the id of a generated PDF is the index into this array
+  # * the value in this array is a `Promise`.
+  #
+  # see [Promises](util.html)
+  PDFS = []
+
+  # The API should be simple:
+  #
+  # * `POST /pdfs?url=http://somewhere/collection.zip` responds with `/pdfs/[id]`
+  # * `GET /pdfs/[id]` either returns a 202/404 with a JSON Promise or
+  # * `GET /pdfs/[id]` returns a 200 with the PDF
+  #
+  # For admin/monitoring:
+  #
+  # * `GET /pdfs` returns a list of the most recent PDF tasks
+  # * `POST /pdfs/[id]/kill` kills that task
+
+  requestPDF = (id, href="#{argv.u}/content/#{id}", style="ccap-physics") ->
+    promise = new Promise()
+    promise.url = href
+    pdfId = PDFS.length
+    PDFS.push(promise)
+
+    spawnGeneratePDF(promise, argv.g, href, style)
+    "/pdfs/#{pdfId}"
+
+  # Request to generate a PDF
+  # Requires a `url` and optional `style` POST parameter
+  app.post('/pdfs', (req, res, next) ->
+    url = req.param('url')
+    style = req.param('style', 'ccap-physics')
+
+    promise = new Promise()
+    promise.url = url
+    id = PDFS.length
+    PDFS.push(promise)
+
+    spawnGeneratePDF(promise, argv.g, url, style)
+    res.send "/pdfs/#{id}"
+  )
+
+  # Returns either the PDF or a 202/404
+  # with a JSON body representing the status
+  # (The Promise.send handles that logic)
+  app.get('/pdfs/:id([0-9]+)', (req, res) ->
+    # Let the promise decide how to respond
+    promise = PDFS[req.params.id]
+    promise.send(res)
+  )
+
+  # For debugging always send back the Promise.toString()
+  app.get('/pdfs/:id([0-9]+).json', (req, res) ->
+    # Let the promise decide how to respond
+    promise = PDFS[req.params.id]
+    res.send JSON.parse(promise.toString())
+  )
+
+  # Returns a list of all the PDFs.
+  # __Note:__ This could just return all the id's
+  app.get('/pdfs', (req, res) ->
+    # Get the toString() versions of all the promises
+    res.send (JSON.parse(pdf.toString()) for pdf in PDFS)
+  )
+
+  # Kills a running PDF process
+  # TODO: Add some authentication
+  app.all("/pdfs/:id([0-9]+)/kill", (req, res) ->
+    PDFS[req.params.id].fail('User Killed this task')
   )
 
   # ### Routes for OpenID authentication

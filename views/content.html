@@ -2,8 +2,8 @@
 <html>
   <head>
     <title>oerpub.repo Admin Console</title>
-    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
-    <meta content='width=device-width, height=device-height, initial-scale=1.0, user-scalable=no' name='viewport'>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type'/>
+    <meta content='width=device-width, height=device-height, initial-scale=1.0, user-scalable=no' name='viewport'/>
 <!--
     <script src='http://code.jquery.com/jquery-latest.js' type='text/javascript'></script>
 -->
@@ -23,8 +23,7 @@
 <script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-tab.js"></script>
 <script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-transition.js"></script>
 <script type="text/javascript" src="../twitter-bootstrap/js/bootstrap-typeahead.js"></script>
-<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap.css" type="text/css"/>
-<link rel="stylesheet" href="http://twitter.github.com/bootstrap/assets/css/bootstrap-responsive.css" type="text/css"/>
+<link rel="stylesheet" href="../bootstrap.css" type="text/css"/>
 
 
   <!-- These CSS/javascript files depend on where Aloha is located -->
@@ -32,13 +31,21 @@
   <link rel="stylesheet" type="text/css" href="../Aloha-Editor/cnx.css" />
 
     <style type="text/css">
-body > .navbar button {
-padding-right: 0;
-padding-left: 0;
-margin-left: 20px;
-float: right;
-font-weight: bold;
-text-shadow: 0 1px 0 rgba(255,255,255,.1), 0 0 30px rgba(255,255,255,.125);
+
+.navbar-inner .progress {
+  width: 100px;
+  margin-top: 10px;
+  float: right;
+}
+
+body > .navbar button,
+body > .navbar a {
+  padding-right: 0;
+  padding-left: 0;
+  margin-left: 20px;
+  float: right;
+  font-weight: bold;
+  text-shadow: 0 1px 0 rgba(255,255,255,.1), 0 0 30px rgba(255,255,255,.125);
 }
       .toolbar { position: fixed; top: 0; width: 100%; z-index: 1000;}
 
@@ -135,7 +142,7 @@ text-shadow: 0 1px 0 rgba(255,255,255,.1), 0 0 30px rgba(255,255,255,.125);
                   resp = "src/test/AlohaEditorLogo.png";
                 }
 
-                /* Drag and Drop creates an <img id="{this.id}"> element but the
+                /* Drag and Drop creates an img id="{this.id}"/ element but the
                  * "New Image" plugin doesn't have access to the UploadFile object (this)
                  * so all it can do is add a class.
                  * If I combine both then we can set the attribute consistently.
@@ -193,16 +200,19 @@ text-shadow: 0 1px 0 rgba(255,255,255,.1), 0 0 30px rgba(255,255,255,.125);
 
     // Load the toolbar from the HTML file and put it right before the document
     // This doesn't need to be in Aloha.ready... it could be in jQuery().ready
-    jQuery('<div class="toolbar-menu hidden"></div>').prependTo('body').load('../Aloha-Editor/cnx-toolbar.html').children().unwrap();
+    jQuery('<div class="toolbar-menu"></div>').hide().prependTo('body').load('../Aloha-Editor/cnx-toolbar.html').children().unwrap();
 
-var header = Aloha.jQuery('<div class="navbar navbar-inverse navbar-fixed-top"><div class="navbar-inner"><div class="container"><button class="btn btn-primary hidden edit">&nbsp;Edit&nbsp;</button><ul class="nav"><li><a href="/">Home</a></li><li><a href="/about">About Us</a></li></ul></div></div></div>');
+var header = Aloha.jQuery('<div class="navbar navbar-inverse navbar-fixed-top"><div class="navbar-inner"><div class="container"><button class="btn btn-primary edit">&#160;Edit&#160;</button><a class="btn btn-info disabled pdf download" href="#">&#160;PDF&#160;</a><div class="pdf progress"><div class="bar"></div></div><ul class="nav"><li><a href="/">Connexions</a></li><li><a href="/about">About Us</a></li></ul></div></div></div>');
+header.find('.edit').hide();
+header.find('.pdf.progress').hide();
+
 header.prependTo('body');
 Aloha.jQuery('<div />').addClass('menubar').prependTo(header);
 Aloha.jQuery('<div />').addClass('toolbar').prependTo(header);
 
 var publishModal = jQuery('<form class="publishing modal hide fade" id="publishingModal" tabindex="-1" role="dialog" aria-labelledby="publishingModalLabel" aria-hidden="true">' +
   '    <div class="modal-header">' +
-  '      <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>' +
+  '      <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&#217;<!--times--></button>' +
   '      <h3>Publishing</h3>' +
   '    </div>' +
   '     <div class="progress progress-striped active" rel="tooltip" title="#"><div class="bar"></div></div>' +
@@ -213,8 +223,8 @@ var publishModal = jQuery('<form class="publishing modal hide fade" id="publishi
 Aloha.ready(function() {
 
   var edit = header.find('.edit');
-  var publish = jQuery('<button class="btn btn-primary publish">&nbsp;Publish&nbsp;</button>');
-  var cancel = jQuery('<button class="btn cancel">&nbsp;Cancel&nbsp;</button>');
+  var publish = jQuery('<button class="btn btn-primary publish">Publish</button>');
+  var cancel = jQuery('<button class="btn btn-danger cancel">Cancel</button>');
 
   var toolbarDiv = jQuery('.toolbar-menu');
   var ops = jQuery('<div class="btn-group"></div>').prependTo(toolbarDiv.find('.btn-toolbar'));
@@ -226,18 +236,18 @@ Aloha.ready(function() {
   var content = Aloha.jQuery('.content');
 
   var squirreledHTML = null; // if the user hits cancel
-  edit.removeClass('hidden');
+  edit.show();
   edit.on('click', function() {
-    header.addClass('hidden');
-    editing.removeClass('hidden');
+    header.hide();
+    editing.show();
 
     squirreledHTML = content[0].innerHTML;
     content.aloha();
     content.focus();
   });
   cancel.on('click', function() {
-    header.removeClass('hidden');
-    editing.addClass('hidden');
+    header.show();
+    editing.hide();
 
     content.mahalo();
     content.html(squirreledHTML);
@@ -260,7 +270,7 @@ Aloha.ready(function() {
           statusCode: {
             200: function(data) {
               publishModal.modal('hide');
-              //jQuery strips out the <html>, <head>, and <body> tags
+              //jQuery strips out the html, head, and body tags
               // and jQuery(data).find('.content') doesn't seem to work
               // so we find a div and then find the top ancestor
               var contentHack = jQuery(data).find('div,span,p,img,a').first().parents().last();
@@ -285,12 +295,54 @@ Aloha.ready(function() {
     });
   });
 
+  // Show the current status of the PDF (progress bar, download button, or nothing)
+  // Poll and show a progress bar
+  jQuery.ajax(window.location.href + '.exports')
+  .error(function() {
+    alert('There was a problem finding where the PDF lives');
+  })
+  .success(function(exportsJSON) {
+    var download = header.find('.pdf.download');
+    var progress = header.find('.pdf.progress');
+
+    var pollTimer = setInterval(function() {
+      jQuery.ajax(exportsJSON.pdf, {
+        type: 'GET',
+        statusCode: {
+          200: function(data) {
+            progress.hide();
+            download.attr('href', exportsJSON.pdf);
+            download.removeClass('disabled');
+            download.show();
+            clearInterval(pollTimer);
+          },
+          202: function(data) {
+            var percent = 100;// * data.progress.finished / data.progress.total;
+            progress.width(percent + '%');
+            download.hide();
+            progress.show();
+          },
+          404: function() {
+            clearInterval(pollTimer);
+            alert("There was a problem generating the PDF. Please check back later.");
+          }
+        }
+      });
+
+    }, 100);
+
+  });
+
+
+
   // Wait until Aloha is started before loading MathJax
   // Also, wrap all math in a span/div. MathJax replaces the MathJax element
   // losing all jQuery data attached to it (like popover data, the original Math Formula, etc)
   // add aloha-cleanme so this span is unwrapped
   jQuery('math').wrap('<span class="math-element aloha-cleanme"></span>')
-  MathJax.Hub.Configured();
+  if (window.MathJax) {
+    MathJax.Hub.Configured();
+  }
 
 });
 

@@ -22,6 +22,9 @@ http = require('http')
 https = require('https')
 url = require('url')
 
+# These are used for generating a PDF
+spawn       = require('child_process').spawn
+
 # The in-memory resources are stored here and are used here and in the server
 module.exports.resources = resources = []
 
@@ -32,12 +35,22 @@ module.exports.resources = resources = []
 # `.update/finish/fail` all update the state as the promise is being worked on
 # `.send()` takes the HTTP Response object and writes either the JSON or the content.
 module.exports.Promise = class Promise extends EventEmitter
+  FIELDS_TO_REMOVE = [ 'pid', 'data' ] # Maybe include 'status'
+
   constructor: () ->
     @status = 'PENDING'
     @created = new Date()
     @history = []
     @isProcessing = true
     @data = null
+
+  # Used to serialize a Promise through the web
+  # Filters out private fields
+  # (or ones that can't be serialized)
+  toString: () ->
+    JSON.stringify @, (key, value) ->
+      # Skip the pid and payload so we can serialize
+      return value if key not in FIELDS_TO_REMOVE
 
   isFinished: () ->
     return not @isProcessing and @data
@@ -184,7 +197,7 @@ cleanupHTML = (html, task, resourceRenamer, linkRenamer, callback) ->
       # Once all the images and links are converted this cleanup is done
       Q.all(promises)
       .then ->
-        newHtml = window.document.outerHTML
+        newHtml = window.document.getElementsByTagName('body')[0].innerHTML
         newHtml = newHtml.replace(/&nbsp;/g, '&#160;')
         callback(errors, newHtml, newHrefs)
       .end()
@@ -288,7 +301,7 @@ class PathContext extends Context
 # *Note:* archiveZip could be null
 makeContext = (promise, href, archiveZip) ->
   contentUrl = url.parse(href)
-  if href[0] == '<'
+  if href.trim()[0] == '<'
     context = new SingleFileContext(promise, href)
   else if contentUrl.protocol
     context = new UrlContext(promise, contentUrl) # TODO: Split off the text after the last slash
@@ -312,7 +325,7 @@ makeContext = (promise, href, archiveZip) ->
 #
 # 1. Converting local links to published id's
 # 2. Importing images and other resources (from the ZIP or remote URLs)
-module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
+module.exports.asyncDeposit = (requestPDF, hrefLookup, archiveZip=null) ->
   hrefLookup.each (href) ->
     id = hrefLookup.getId(href)
     # Log that we're doing something on this piece of content
@@ -386,6 +399,59 @@ module.exports.asyncDeposit = (argv, hrefLookup, archiveZip=null) ->
             promise.work "updateContent id=#{id}"
             promise.finish cleanHtml
 
-          #TODO Request a PDF to be generated
+            # Request a PDF to be generated
+            pdfId = requestPDF(id)
+            promise.exports =
+              pdf: pdfId
       else
         promise.fail("couldn't get data for some reason")
+
+# # PDF Spawns ####
+# A spawned task attaches itself to a `Promise` and by parsing IO from the child
+# the promise is updated.
+
+# The script that downloads a Zip (maybe from file://) performs some processing
+# and writes progress updates to `stderr` and the PDF to `stdout`
+PDFGEN_SCRIPT = path.join(__dirname, '..', 'generate-pdf.sh')
+
+# Code that parses stderr and updates
+# the progress when the line 'STATUS: ##%' is seen
+childLogger = (promise) -> (data) ->
+  lines = data.toString().split('\n')
+  for line in lines
+    if line.length > 1
+      percent = /^STATUS: (\d+)%/.exec(line)
+      if percent
+        promise.progress.finished = parseInt(percent[1])
+      else
+        promise.update line
+
+module.exports.spawnGeneratePDF = (promise, princePath, url, style) ->
+  # Except for cwd the rest are environment variables PDFGEN_SCRIPT expects
+  options =
+    cwd: path.join(__dirname, '..')
+    env:
+      PRINCEXML_PATH: princePath
+      URL: url
+      STYLE: style
+
+  console.log options.env
+  child = spawn('sh', [ '-xv', PDFGEN_SCRIPT ], options)
+  # Attach the process to the promise so we can kill it
+  promise.pid = child
+
+  chunks = []
+  chunkLen = 0
+  child.stdout.on 'data', (chunk) ->
+    chunks.push chunk
+    chunkLen += chunk.length
+  child.on 'exit', (code) ->
+    buf = new Buffer(chunkLen)
+    pos = 0
+    for chunk in chunks
+      chunk.copy(buf, pos)
+      pos += chunk.length
+    promise.finish(buf, 'application/pdf')
+
+  child.stderr.on 'data', childLogger(promise)
+  promise.progress = {finished: 0, total: 100}
