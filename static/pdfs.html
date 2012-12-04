@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Admin Console</title>
+
+<script type="text/javascript">var module = {}; </script>
+<script type="text/javascript" src="./jquery-component/dist/jquery.js"></script>
+
+    <script src="humane-dates.js"></script>
+
+    <link href="http://twitter.github.com/bootstrap/assets/css/bootstrap.css" rel="stylesheet">
+
+
+<style type="text/css">
+  .progress { margin-bottom: 0; }
+  .datetime { white-space: nowrap; text-transform: lowercase; }
+</style>
+
+  </head>
+  <body>
+
+  <h2>Admin Console</h2>
+
+  <p>Content URL to convert to PDF: <form method="POST" action="pdfs"><input name="url" type="url" placeholder="URL to a Collection Zip" value="http://depot.cnx.rice.edu:3000/content/0" /><button type="submit" class="btn btn-primary">Submit</button></form></p>
+  <p>Refresh every: <input id="refresh" type="number" placeholder="seconds" /></p>
+
+  <div class="span9">
+    <table class="monitor table table-striped table-hover table-condensed table-bordered">
+      <thead>
+        <tr>
+          <th> </th><th colspan="2">Times</th><th colspan="3">Progress</th>
+        </tr>
+        <tr>
+          <th>Id</th><th>Started</th><th>Updated</th><th>Completion</th><th>Progress</th><th>Kill</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="no-tasks"><td colspan="5">No data has loaded yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+
+  <script type="text/javascript">
+//<!--
+
+jQuery().ready(function() {
+  var STATUS_URL = window.location.href.replace('.html', '');
+
+  var $monitor = jQuery('.monitor tbody');
+
+  /* Repopulate the table but only change rows that have changed */
+  function repopulate(data) {
+    // 1st off, clear the no-tasks row since we have some data
+    $monitor.find('.no-tasks').remove();
+
+    for(id in data) {
+      var task = data[id];
+
+      // TODO: There should be 1 template (for i18n) instead of a bunch of divs
+      var $row = $monitor.find('#task-' + id);
+      if (!$row[0]) {
+        $row = jQuery('<tr><td class="id"><a class="id-link" href="#" target="blank">#</a></td><td class="created"><span class="datetime">#</span></td><td class="modified"><span class="datetime">#</span></td><td class="estimate"><span class="datetime">#</span></td><td class="progress"><div class="progress progress-striped active" rel="tooltip" title="#"><div class="bar"></div></div></td><td class="kill"><button class="kill-task btn btn-danger btn-small">Kill Task</button></td></tr>');
+        $row.attr('id', 'task-' + id);
+        $monitor.prepend($row);
+      }
+      var $id = $row.find('.id .id-link');
+      var $created = $row.find('.created .datetime');
+      var $modified = $row.find('.modified .datetime');
+      var $progress = $row.find('.progress');
+      var $bar = $row.find('.progress .bar');
+      var $estimate = $row.find('.estimate .datetime');
+      var $kill = $row.find('.kill-task');
+
+
+      switch(task.status) {
+        case 'FAILED':
+          $row.addClass('error');
+          $bar.addClass('bar-danger');
+          $bar.parent().removeClass('progress-striped');
+          $kill.addClass('disabled');
+          break;
+        case 'FINISHED':
+          //$row.addClass('success');
+          $row.removeClass('info');
+          $bar.addClass('bar-success');
+          $bar.width('100%');
+          $bar.parent().removeClass('progress-striped');
+          $kill.remove();
+          break;
+        default:
+          $row.addClass('info');
+      }
+
+
+      $id.attr('href', STATUS_URL + '/' + id);
+      $id.text(id);
+
+      $created.attr('title', task.created);
+      $modified.attr('title', task.modified);
+
+      var finished = task.progress ? task.progress.finished : 0;
+      var total    = task.progress ? task.progress.total : 1;
+      var fraction = finished / total;
+      var percent = Math.round(fraction * 100);
+      if (percent) {
+        $bar.width(percent + '%');
+      }
+
+      $progress.attr('title', 'Completed ' + finished + '/' + total + ' units (' + percent + '%)');
+
+      // Calculate Estimated Time to completion
+      if (task.status != 'FAILED' && task.status != 'FINISHED') {
+        var started = new Date(task.created).getTime();
+        var modified = new Date(task.modified).getTime();
+        var taken = new Date().getTime() - started;
+        var estimate = taken / fraction;
+        $estimate.attr('title', JSON.stringify(new Date(started + estimate)));
+      } else {
+        $estimate.text('');
+      }
+
+      $kill.on('click', function() {
+        jQuery.ajax(STATUS_URL + '/' + id + '/kill');
+      });
+
+    }
+    jQuery('.datetime').humaneDates();
+
+  }
+
+  var retry = function() {
+    jQuery.ajax(STATUS_URL, {
+      type: 'GET',
+      success: function(data) {
+        repopulate(data);
+        setTimeout(retry, 1000 * ($('#refresh').val() || 5));
+      },
+      error: function(jqXHR, textStatus, errorThrown) {
+        // Stop retrying
+        alert('There was a problem connecting to the server. Refresh and try again');
+      }
+    });
+  };
+  retry();
+
+
+
+}); // End jQuery.ready();
+
+//-->
+    </script>
+
+
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-transition.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-alert.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-modal.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-dropdown.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-scrollspy.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-tab.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-tooltip.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-popover.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-button.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-collapse.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-carousel.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-typeahead.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/bootstrap-affix.js"></script>
+    <script src="http://twitter.github.com/bootstrap/assets/js/application.js"></script>
+  </body>
+</html>

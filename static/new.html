@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>oerpub.repo Admin Console</title>
+    <title>oerpub.repo New Content</title>
     <meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
     <meta content='width=device-width, height=device-height, initial-scale=1.0, user-scalable=no' name='viewport'>
 <!--
@@ -176,35 +176,13 @@
   </head>
   <body>
 
-    <div class="login">
-      <h2>Log in to Create Content</h2>
-      <form class="no-ajax" action="/login" method="POST">
-        <p>Log in with one of these OpenID Providers:</p>
-        <select name="identifier">
-          <option value="https://www.google.com/accounts/o8/id">Google</option>
-          <option value="https://me.yahoo.com">Yahoo</option>
-          <option value="https://openid.stackexchange.com/">StackExchange</option>
-          <option value="https://www.aol.com">AOL</option>
-          <option value="http://www.livejournal.com/openid/server.bml">Live Journal</option>
-        </select>
-        <button class="btn btn-primary" type="submit">Log In</button>
-      </form>
-
-      <p>Or, provide a URL given by your OpenID Provider</p>
-      <form class="no-ajax" action="/login" method="POST">
-        <input type="text" name="identifier"/>
-        <button class="btn" type="submit">Log In</button>
-      </form>
-    </div>
-
     <div class="create">
       <h2>Create new Content</h2>
       <form action="/deposit" method="POST">
         <p>Resource body (the HTML):</p>
         <textarea name="new">
-    &lt;p&gt;Hello there! I really like
-      &lt;a href="http://cnx.org"&gt;Connexions&lt;/a&gt;
-    &lt;/p&gt;
+&lt;p>Hello there!&lt;/p>&lt;p>You can enter any HTML in here.&lt;/p>&lt;h1>Heading1&lt;/h1>&lt;h3>Heading 3&lt;/h3>&lt;ul>&lt;li>Lists supported&lt;/li>&lt;li>&lt;ol>&lt;li>And sublists&lt;/li>&lt;/ol>&lt;/li>&lt;p>Lists &lt;strong>and&lt;/strong> &lt;em>multiple&lt;/em> lines, &lt;sub>subscripts&lt;/sub>, &lt;q>quotes&lt;/q>, &lt;a href="http://cnx.org">links&lt;/a>!&lt;/p>&lt;/ul>
+    &lt;/div>
         </textarea>
         <div>
           <button class="btn btn-primary" type="submit">Commit!</button>
@@ -213,48 +191,13 @@
     </div>
 
     <div class="deposit">
-      <h2>Deposit new content from a URL</h2>
-      <form action="/deposit" method="POST">
-        <span>URL: </span>
-        <input type="text" name="new" value="http://cnx.org/content/m9003/latest/" style="width: 20em;"/>
-        <button class="btn btn-primary" type="submit">Deposit!</button>
-      </form>
-
-      <form action="/deposit" method="POST">
-        <span>Or pick one: </span>
-        <select name="new">
-          <option value="http://cnx.org/content/m9003/latest/">cnx.org module m9003</option>
-          <option value="http://cnx.org/">Connexions Home Page</option>
-          <option value="https://docs.google.com/document/pub?id=1Cv5ozsGi5ukXTe8d_NlDExQg-o1lHvKuLH8RVJXqZRE">Published Google Doc (uses https)</option>
-        </select>
-        <button class="btn" type="submit">Deposit!</button>
-      </form>
-    </div>
-
-    <div class="deposit">
-      <h2>Import from a Zip</h2>
+      <h2>Or, Import from a Zip</h2>
       <form action="/deposit" method="POST" enctype="multipart/form-data">
         <input name="archive" type="file"/>
-        <br/><button class="btn btn-primary" type="submit">Deposit!</button>
+        <br/><button class="btn btn-primary" type="submit">Commit!</button>
       </form>
     </div>
 
-    <div class="deposit">
-      <h2>Multiple Deposits with a Zip</h2>
-      <form action="/deposit" method="POST" enctype="multipart/form-data">
-        <span>URL 1:</span> <input class="x-large" type="url" name="new" value="http://cnx.org/content/m9003/latest/"/> (*)
-        <br/><span>URL 2:</span> <input type="text" name="new" value="index.html" style="width: 20em;"/> (*)
-        <br/><span>Update URL:</span> <input type="text" class="dynamic-name" value="new" style="width: 5em;"/> = <input type="text" class="dynamic-value" style="width: 20em;"/> (**)
-        <br/><span>Zip File:</span> <input name="archive" type="file"/>
-        <br/><button class="btn btn-primary" type="submit">Deposit!</button>
-        <br/><span>* This can be an absolute URL or a relative href into the Zip file.
-        <br/>Leave both empty to publish all HTML files in the uploaded Zip file (think EPUB)</span>
-        <br/><span>** The 1st box is used either for updating or for adding. The 1st box is either the id or "new" (for new content)
-        <br/>The second box can be either: A URL to pull from, a href into the zip, or the raw HTML</span>
-      </form>
-    </div>
-
-    <div class="monitor"></div>
     <div class="status-footer"></div>
 
     <script type="text/javascript">
@@ -300,7 +243,7 @@ var makeDeposit = function(urls) {
       $.each(urls, function(href, url) {
         jQuery('<a target="new" href="#"></a>')
         .attr('href', url.split('@')[0])
-        .text(href || url)
+        .text(href || 'link')
         .appendTo($status);
 
         $status.append(', ');
@@ -554,16 +497,13 @@ Aloha.ready(function() {
       if(window.MathJax) { MathJax.Hub.Configured(); }
 
 
-  var edits = ['<div><p>Hello there!</p><p>You can enter any HTML in here.</p><h1>Heading1</h1><h3>Heading 3</h3><ul><li>Lists supported</li><li><ol><li>And sublists</li></ol></li><p>Lists <b>and</b> <i>multiple</i> lines, <sub>subscripts</sub>, <q>quotes</q>, <a href="http://cnx.org">links</a>!</p></div>', '<div>Insert Some other HTML here</div>']
-  var editIndex = 0;
-
   var texts = Aloha.jQuery('textarea');
   texts.each(function(i, el) {
 
     var $el = Aloha.jQuery(el);
     $el.hide();
 
-    var edit = Aloha.jQuery(edits[editIndex++ % edits.length]).addClass('document').insertAfter($el).aloha();
+    var edit = Aloha.jQuery('<div>'+$el.val()+'</div>').addClass('document').insertAfter($el).aloha();
 
     setInterval(function() {
       $el.val(edit.html().trim());

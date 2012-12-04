@@ -32,7 +32,7 @@
 
     <style type="text/css">
 
-.navbar-inner .progress {
+.navbar .progress {
   width: 100px;
   margin-top: 10px;
   float: right;
@@ -202,9 +202,7 @@ body > .navbar a {
     // This doesn't need to be in Aloha.ready... it could be in jQuery().ready
     jQuery('<div class="toolbar-menu"></div>').hide().prependTo('body').load('../Aloha-Editor/cnx-toolbar.html').children().unwrap();
 
-var header = Aloha.jQuery('<div class="navbar navbar-inverse navbar-fixed-top"><div class="navbar-inner"><div class="container"><button class="btn btn-primary edit">&#160;Edit&#160;</button><a class="btn btn-info disabled pdf download" href="#">&#160;PDF&#160;</a><div class="pdf progress"><div class="bar"></div></div><ul class="nav"><li><a href="/">Connexions</a></li><li><a href="/about">About Us</a></li></ul></div></div></div>');
-header.find('.edit').hide();
-header.find('.pdf.progress').hide();
+var header = Aloha.jQuery('<div class="navbar navbar-inverse navbar-fixed-top"><div class="navbar-inner"><div class="container"><button class="btn btn-primary edit">&#160;Edit&#160;</button><a class="btn btn-info pdf download" href="#">&#160;PDF&#160;</a><div class="pdf progress progress-striped active"><div class="bar"></div></div><ul class="nav"><li><a href="/">Connexions</a></li><li><a href="/about">About Us</a></li></ul></div></div></div>');
 
 header.prependTo('body');
 Aloha.jQuery('<div />').addClass('menubar').prependTo(header);
@@ -221,6 +219,8 @@ var publishModal = jQuery('<form class="publishing modal hide fade" id="publishi
 
 // Once Aloha has loaded, bind it all
 Aloha.ready(function() {
+  var href = window.location.href;
+  var pollPDF;
 
   var edit = header.find('.edit');
   var publish = jQuery('<button class="btn btn-primary publish">Publish</button>');
@@ -253,7 +253,8 @@ Aloha.ready(function() {
     content.html(squirreledHTML);
   });
   publish.on('click', function() {
-    var id = window.location.href.split('/')[window.location.href.split('/').length-1];
+    var id = href.split('/')[href.split('/').length-1];
+    id = id.split('@')[0]; // Remove the version
     var params = {};
     params[id] = content.html().trim();
     jQuery.ajax('/deposit', {
@@ -261,6 +262,7 @@ Aloha.ready(function() {
       data: params,
     }).done(function(data){
       //shortcut. just emulate cancel
+      pollPDF();
       cancel.trigger('click');
 
       // Poll and show a progress bar
@@ -293,46 +295,52 @@ Aloha.ready(function() {
 
       }, 100);
     });
-  });
+  }); //publish.click
 
   // Show the current status of the PDF (progress bar, download button, or nothing)
   // Poll and show a progress bar
-  jQuery.ajax(window.location.href + '.exports')
-  .error(function() {
-    alert('There was a problem finding where the PDF lives');
-  })
-  .success(function(exportsJSON) {
-    var download = header.find('.pdf.download');
-    var progress = header.find('.pdf.progress');
+  pollPDF = function() {
 
-    var pollTimer = setInterval(function() {
-      jQuery.ajax(exportsJSON.pdf, {
-        type: 'GET',
-        statusCode: {
-          200: function(data) {
-            progress.hide();
-            download.attr('href', exportsJSON.pdf);
-            download.removeClass('disabled');
-            download.show();
-            clearInterval(pollTimer);
-          },
-          202: function(data) {
-            var percent = 100;// * data.progress.finished / data.progress.total;
-            progress.width(percent + '%');
-            download.hide();
-            progress.show();
-          },
-          404: function() {
-            clearInterval(pollTimer);
-            alert("There was a problem generating the PDF. Please check back later.");
+    header.find('.pdf.download').hide();
+    header.find('.pdf.progress').hide();
+
+    jQuery.ajax(href + '.exports')
+    .error(function() {
+      alert('There was a problem finding where the PDF lives');
+    })
+    .success(function(exportsJSON) {
+      var download = header.find('.pdf.download');
+      var progress = header.find('.pdf.progress');
+
+      var pollTimer = setInterval(function() {
+        jQuery.ajax(exportsJSON.pdf, {
+          type: 'GET',
+          statusCode: {
+            200: function(data) {
+              progress.hide();
+              download.attr('href', exportsJSON.pdf);
+              download.show();
+              clearInterval(pollTimer);
+            },
+            202: function(data) {
+              var percent = 100;// * data.progress.finished / data.progress.total;
+              progress.find('.bar').width(percent + '%');
+              download.hide();
+              progress.show();
+            },
+            404: function() {
+              //clearInterval(pollTimer);
+              //alert("There was a problem generating the PDF. Please check back later.");
+            }
           }
-        }
-      });
+        });
 
-    }, 100);
+      }, 100);
 
-  });
-
+    });
+  };
+  pollPDF();
+  header.find('.edit').show();
 
 
   // Wait until Aloha is started before loading MathJax
