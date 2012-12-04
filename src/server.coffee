@@ -132,7 +132,7 @@ module.exports = exports = (argv) ->
   # ## Admin Page
   app.get('/', (req, res) ->
     #res.render('admin.html', {}) # {} is vars
-    res.redirect('admin.html')
+    res.redirect('index.html')
   )
 
   # ## POST routes
@@ -210,6 +210,7 @@ module.exports = exports = (argv) ->
     # First make sure the user has permission to change all the content that is being updated
     postParams = req.body or []
     for id of postParams
+      id = id.split('@')[0]
       if 'archive' != id and 'new' != id and not canChangeContent(id, req.user)
         res.send "ERROR: You do not have permission to change #{id}"
         return
@@ -250,6 +251,9 @@ module.exports = exports = (argv) ->
     hrefLookup = new HrefLookup()
     for id, hrefs of postParams
       # hrefs could either be a string or an array of strings (if id='new')
+
+      # if id has an @ then remove it
+      id = id.split('@')[0]
 
       # Either it's new content or it's a new version of existing content
       if id == 'new'
@@ -306,7 +310,7 @@ module.exports = exports = (argv) ->
   ) # END app.post('/deposit'
 
   # Return JSON of all the content in the repo
-  app.get("/#{CONTENT}/", (req, res) ->
+  app.get("/#{CONTENT}", (req, res) ->
     # Build up a little map of all the promises (tasks)
     tasks = []
     for c in content
@@ -400,7 +404,9 @@ module.exports = exports = (argv) ->
     pdfId = PDFS.length
     PDFS.push(promise)
 
-    spawnGeneratePDF(promise, argv.g, href, style)
+    setTimeout(() ->
+      spawnGeneratePDF(promise, argv.g, href, style)
+    , 30000)
     "/pdfs/#{pdfId}"
 
   # Request to generate a PDF
