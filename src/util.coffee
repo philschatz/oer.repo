@@ -38,7 +38,7 @@ module.exports.Promise = class Promise extends EventEmitter
   FIELDS_TO_REMOVE = [ 'pid', 'data' ] # Maybe include 'status'
 
   constructor: () ->
-    @status = 'PENDING'
+    @status = 'WORKING'
     @created = new Date()
     @history = []
     @isProcessing = true
@@ -55,14 +55,24 @@ module.exports.Promise = class Promise extends EventEmitter
   isFinished: () ->
     return not @isProcessing and @data
   # Send either the data (if available), or a HTTP Status with this JSON
+  # Cases (based on `status`):
+  #
+  # * `WORKING`: return a 202 and the JSON Promise (for admin/debugging, progress bars)
+  # * `FINISHED`: `data` is not null so return a 200 with the payload
+  # * `FAILED`: return a 404 with the JSON promise (optional. could just be generic 404)
+  #
+  # `res` is a HTTP response object
   send: (res) ->
-    if @isProcessing
-      res.status(202).send @
-    else if @data
-      res.header('Content-Type', @mimeType)
-      res.send @data
-    else
-      res.status(404).send @
+    switch @status
+      when 'WORKING'
+        # Use @toString so the pid is removed and reparse so we send the right content type
+        res.status(202).send JSON.parse(@toString())
+      when 'FINISHED'
+        res.header('Content-Type', @mimeType)
+        res.send @data
+      else
+        # Use @toString so the pid is removed and reparse so we send the right content type
+        res.status(404).send JSON.parse(@toString())
   # Update the promise without completing it
   work: (message, @status='WORKING') ->
     @update(message)
@@ -99,6 +109,7 @@ module.exports.Promise = class Promise extends EventEmitter
     @update "Generated file"
     @isProcessing = false
     @status = 'FINISHED'
+    @progress.finished = @progress.total if @progress
     @emit('finish', @data, @mimeType)
 
 # # Asynchronous Deposits
@@ -454,4 +465,4 @@ module.exports.spawnGeneratePDF = (promise, princePath, url, style) ->
     promise.finish(buf, 'application/pdf')
 
   child.stderr.on 'data', childLogger(promise)
-  promise.progress = {finished: 0, total: 100}
+  promise.progress = {finished: 33, total: 100}
